@@ -1,0 +1,6 @@
+{
+  "name": "Билайн ИИ-игры от Пакман",
+  "description": "Генератор автономных HTML5-мини-игр по текстовому запросу на базе Gemini AI для хакатона Билайна",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
