@@ -60,3 +60,11 @@ test('validateGameHtml rejects network calls like fetch', () => {
   assert.equal(result.isValid, false);
   assert.ok(result.error?.includes('сетевые запросы'));
 });
+
+test('validateGameHtml rejects unsupported Three.js references', () => {
+  const threeHtml = `<html><head></head><body><script>const scene = new THREE.Scene();</script></body></html>`;
+  const result = validateGameHtml(threeHtml);
+  assert.equal(result.isValid, false);
+  assert.ok(result.error?.includes('Three.js'));
+});
+

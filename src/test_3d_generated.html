@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>3D Лабиринт: Сокровища Пакмана</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+
+    body {
+      background-color: #111;
+      color: #fff;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #game-container {
+      position: relative;
+      width: 100%;
+      max-width: 800px;
+      height: 100%;
+      max-height: 600px;
+      aspect-ratio: 4/3;
+      background: #000;
+      box-shadow: 0 0 25px rgba(255, 193, 7, 0.3);
+      overflow: hidden;
+      border-radius: 12px;
+    }
+
+    canvas#viewport {
+      width: 100%;
+      height: 100%;
+      display: block;
+      image-rendering: pixelated;
+    }
+
+    /* HUD */
+    #hud {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .hud-card {
+      background: rgba(15, 15, 20, 0.82);
+      border: 2px solid #ffcc00;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-weight: bold;
+      font-size: 16px;
+      color: #fff;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    }
+
+    .hud-card span {
+      color: #ffcc00;
+    }
+
+    #minimap-canvas {
+      position: absolute;
+      top: 60px;
+      right: 12px;
+      width: 90px;
+      height: 90px;
+      background: rgba(0, 0, 0, 0.6);
+      border: 2px solid #ffcc00;
+      border-radius: 8px;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    /* Сенсорные контролы */
+    #touch-controls {
+      position: absolute;
+      bottom: 14px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 20px;
+      pointer-events: none;
+      z-index: 15;
+    }
+
+    .touch-cluster {
+      display: grid;
+      grid-template-columns: repeat(3, 56px);
+      grid-template-rows: repeat(2, 56px);
+      gap: 10px;
+      pointer-events: auto;
+    }
+
+    .t-btn {
+      background: rgba(255, 204, 0, 0.3);
+      border: 2px solid #ffcc00;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      user-select: none;
+      backdrop-filter: blur(4px);
+      transition: background 0.1s, transform 0.05s;
+    }
+
+    .t-btn:active, .t-btn.active {
+      background: rgba(255, 204, 0, 0.8);
+      color: #111;
+      transform: scale(0.92);
+    }
+
+    /* Модальные окна */
+    .screen-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(10, 10, 15, 0.94);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+      z-index: 30;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    h1 {
+      font-size: 32px;
+      color: #ffcc00;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      text-shadow: 0 0 10px rgba(255, 204, 0, 0.6);
+    }
+
+    p {
+      font-size: 16px;
+      color: #ddd;
+      line-height: 1.5;
+      max-width: 440px;
+      margin-bottom: 20px;
+    }
+
+    .badge-rules {
+      background: #222;
+      border: 1px dashed #ffcc00;
+      padding: 10px 16px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+      font-size: 14px;
+      color: #ffea79;
+    }
+
+    .btn-main {
+      background: #ffcc00;
+      color: #111;
+      border: none;
+      font-size: 20px;
+      font-weight: 800;
+      padding: 16px 40px;
+      border-radius: 50px;
+      cursor: pointer;
+      box-shadow: 0 6px 20px rgba(255, 204, 0, 0.4);
+      transition: transform 0.15s, background 0.2s;
+    }
+
+    .btn-main:hover {
+      background: #ffd633;
+      transform: scale(1.05);
+    }
+
+    .btn-main:active {
+      transform: scale(0.95);
+    }
+
+    .stats-card {
+      background: rgba(255, 255, 255, 0.08);
+      padding: 14px 24px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      border: 1px solid rgba(255, 204, 0, 0.3);
+      font-size: 18px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="game-container">
+    <canvas id="viewport" width="400" height="300"></canvas>
+    <canvas id="minimap-canvas" width="120" height="120"></canvas>
+
+    <div id="hud">
+      <div class="hud-card">💎 Кристаллы: <span id="crystal-count">0/5</span></div>
+      <div class="hud-card">⏱ Время: <span id="time-val">60с</span></div>
+    </div>
+
+    <!-- Виртуальные кнопки управления -->
+    <div id="touch-controls">
+      <div class="touch-cluster">
+        <div class="t-btn" style="grid-column: 1; grid-row: 2;" id="btn-left">◀</div>
+        <div class="t-btn" style="grid-column: 2; grid-row: 1;" id="btn-up">▲</div>
+        <div class="t-btn" style="grid-column: 2; grid-row: 2;" id="btn-down">▼</div>
+        <div class="t-btn" style="grid-column: 3; grid-row: 2;" id="btn-right">▶</div>
+      </div>
+    </div>
+
+    <!-- Стартовый экран -->
+    <div id="start-screen" class="screen-overlay">
+      <h1>3D Лабиринт</h1>
+      <p>Отыщи выход из футуристического лабиринта Билайн! Собери все светящиеся энергокристаллы и шагни в телепорт.</p>
+      <div class="badge-rules">
+        🎮 Управление: <b>Стрелки / WASD</b> на ПК или экранные кнопки на смартфонах.<br>
+        🎯 Задача: Собери все 5 кристаллов и дойди до зеленого портала.
+      </div>
+      <button class="btn-main" id="btn-start">ИГРАТЬ</button>
+    </div>
+
+    <!-- Экран победы -->
+    <div id="win-screen" class="screen-overlay hidden">
+      <h1 style="color: #4cd137;">ПОБЕДА!</h1>
+      <p>Вы успешно разгадали тайну лабиринта и активировали портал!</p>
+      <div class="stats-card">
+        Оставшееся время: <b id="win-time" style="color: #ffcc00;">0</b> сек<br>
+        Итоговый счет: <b id="win-score" style="color: #ffcc00;">0</b> очков
+      </div>
+      <button class="btn-main" id="btn-restart-win">ИГРАТЬ СНОВА</button>
+    </div>
+
+    <!-- Экран поражения -->
+    <div id="lose-screen" class="screen-overlay hidden">
+      <h1 style="color: #e84118;">ВРЕМЯ ВЫШЛО!</h1>
+      <p>Энергия костюма иссякла в глубинах лабиринта.</p>
+      <div class="stats-card">
+        Собрано кристаллов: <b id="lose-crystals" style="color: #ffcc00;">0</b>
+      </div>
+      <button class="btn-main" id="btn-restart-lose">ПОПРОБОВАТЬ СНОВА</button>
+    </div>
+  </div>
+
+  <script>
+    // Обязательная структура данных уровня
+    window.GAME_LEVEL_DATA = {
+      genre: 'maze',
+      // 1 = стена, 0 = свободный проход
+      grid: [
+        [1,1,1,1,1,1,1,1,1,1,1,1,1],
+        [1,0,0,0,1,0,0,0,0,0,0,0,1],
+        [1,0,1,0,1,0,1,1,1,1,1,0,1],
+        [1,0,1,0,0,0,1,0,0,0,1,0,1],
+        [1,0,1,1,1,0,1,0,1,0,1,0,1],
+        [1,0,0,0,1,0,0,0,1,0,0,0,1],
+        [1,1,1,0,1,1,1,0,1,1,1,0,1],
+        [1,0,0,0,0,0,1,0,0,0,1,0,1],
+        [1,0,1,1,1,0,1,1,1,0,1,0,1],
+        [1,0,1,0,0,0,0,0,1,0,0,0,1],
+        [1,0,1,0,1,1,1,0,1,1,1,0,1],
+        [1,0,0,0,1,0,0,0,0,0,0,0,1],
+        [1,1,1,1,1,1,1,1,1,1,1,1,1]
+      ],
+      start: { x: 1.5, y: 1.5, dir: 0 },
+      exit: { x: 11.5, y: 11.5 },
+      collectibles: [
+        { x: 3.5, y: 3.5 },
+        { x: 7.5, y: 1.5 },
+        { x: 1.5, y: 7.5 },
+        { x: 7.5, y: 9.5 },
+        { x: 11.5, y: 5.5 }
+      ]
+    };
+
+    // --- ЗВУКОВОЙ ДВИЖОК (Web Audio API) ---
+    class SoundFX {
+      constructor() {
+        this.ctx = null;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) this.ctx = new AudioContext();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      playPickup() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(523.25, now);
+        osc.frequency.exponentialRampToValueAtTime(1046.50, now + 0.15);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.15);
+      }
+      playStep() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(90, now);
+        osc.frequency.exponentialRampToValueAtTime(40, now + 0.05);
+        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.linearRampToValueAtTime(0.001, now + 0.05);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.05);
+      }
+      playWin() {
+        if (!this.ctx) return;
+        const notes = [440, 554, 659, 880];
+        notes.forEach((freq, idx) => {
+          const now = this.ctx.currentTime + idx * 0.1;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now);
+          gain.gain.setValueAtTime(0.25, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.35);
+        });
+      }
+      playLose() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.exponentialRampToValueAtTime(55, now + 0.4);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.4);
+      }
+    }
+
+    const sfx = new SoundFX();
+
+    // --- ПЕРЕМЕННЫЕ ИГРЫ ---
+    const canvas = document.getElementById('viewport');
+    const ctx = canvas.getContext('2d');
+    const minimapCanvas = document.getElementById('minimap-canvas');
+    const mctx = minimapCanvas.getContext('2d');
+
+    const crystalCountEl = document.getElementById('crystal-count');
+    const timeValEl = document.getElementById('time-val');
+    const startScreen = document.getElementById('start-screen');
+    const winScreen = document.getElementById('win-screen');
+    const loseScreen = document.getElementById('lose-screen');
+
+    let gameState = 'START'; // START, PLAYING, WIN, LOSE
+    let timeLeft = 60;
+    let timerInterval = null;
+
+    // Параметры игрока
+    const player = {
+      x: 1.5,
+      y: 1.5,
+      dir: 0, // угол в радианах
+      speed: 2.8,
+      rotSpeed: 2.4,
+      collected: 0,
+      totalCrystals: 5
+    };
+
+    // Объекты лабиринта
+    let items = [];
+    const exitPortal = { x: 0, y: 0, active: false };
+
+    // Управление
+    const keys = { forward: false, backward: false, left: false, right: false };
+
+    // Raycaster настройки
+    const FOV = Math.PI / 3; // 60 градусов
+    const NUM_RAYS = 200;
+    const ZBuffer = new Float32Array(NUM_RAYS);
+
+    // --- СЛУШАТЕЛИ ВВОДА ---
+    window.addEventListener('keydown', (e) => {
+      sfx.init();
+      if (e.code === 'KeyW' || e.code === 'ArrowUp') keys.forward = true;
+      if (e.code === 'KeyS' || e.code === 'ArrowDown') keys.backward = true;
+      if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = true;
+      if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = true;
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'KeyW' || e.code === 'ArrowUp') keys.forward = false;
+      if (e.code === 'KeyS' || e.code === 'ArrowDown') keys.backward = false;
+      if (e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = false;
+      if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = false;
+    });
+
+    function bindTouch(btnId, keyName) {
+      const btn = document.getElementById(btnId);
+      const setKey = (val) => {
+        sfx.init();
+        keys[keyName] = val;
+        btn.classList.toggle('active', val);
+      };
+      btn.addEventListener('touchstart', (e) => { e.preventDefault(); setKey(true); });
+      btn.addEventListener('touchend', (e) => { e.preventDefault(); setKey(false); });
+      btn.addEventListener('mousedown', (e) => { e.preventDefault(); setKey(true); });
+      btn.addEventListener('mouseup', (e) => { e.preventDefault(); setKey(false); });
+      btn.addEventListener('mouseleave', () => setKey(false));
+    }
+
+    bindTouch('btn-up', 'forward');
+    bindTouch('btn-down', 'backward');
+    bindTouch('btn-left', 'left');
+    bindTouch('btn-right', 'right');
+
+    document.getElementById('btn-start').addEventListener('click', () => {
+      sfx.init();
+      startGame();
+    });
+    document.getElementById('btn-restart-win').addEventListener('click', () => {
+      sfx.init();
+      startGame();
+    });
+    document.getElementById('btn-restart-lose').addEventListener('click', () => {
+      sfx.init();
+      startGame();
+    });
+
+    // --- ИНИЦИАЛИЗАЦИЯ ИГРЫ ---
+    function startGame() {
+      const data = window.GAME_LEVEL_DATA;
+      player.x = data.start.x;
+      player.y = data.start.y;
+      player.dir = data.start.dir;
+      player.collected = 0;
+      player.totalCrystals = data.collectibles.length;
+
+      exitPortal.x = data.exit.x;
+      exitPortal.y = data.exit.y;
+      exitPortal.active = false;
+
+      items = data.collectibles.map(c => ({
+        x: c.x,
+        y: c.y,
+        collected: false
+      }));
+
+      timeLeft = 65;
+      updateHUD();
+
+      startScreen.classList.add('hidden');
+      winScreen.classList.add('hidden');
+      loseScreen.classList.add('hidden');
+
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        if (gameState === 'PLAYING') {
+          timeLeft--;
+          updateHUD();
+          if (timeLeft <= 0) {
+            endGame(false);
+          }
+        }
+      }, 1000);
+
+      gameState = 'PLAYING';
+    }
+
+    function updateHUD() {
+      crystalCountEl.innerText = `${player.collected}/${player.totalCrystals}`;
+      timeValEl.innerText = `${timeLeft}с`;
+      if (timeLeft <= 10) {
+        timeValEl.style.color = '#ff3838';
+      } else {
+        timeValEl.style.color = '#ffcc00';
+      }
+    }
+
+    function endGame(isWin) {
+      gameState = isWin ? 'WIN' : 'LOSE';
+      if (timerInterval) clearInterval(timerInterval);
+
+      if (isWin) {
+        sfx.playWin();
+        const score = timeLeft * 50 + player.collected * 200;
+        document.getElementById('win-time').innerText = timeLeft;
+        document.getElementById('win-score').innerText = score;
+        winScreen.classList.remove('hidden');
+      } else {
+        sfx.playLose();
+        document.getElementById('lose-crystals').innerText = `${player.collected}/${player.totalCrystals}`;
+        loseScreen.classList.remove('hidden');
+      }
+    }
+
+    function isWall(x, y) {
+      const grid = window.GAME_LEVEL_DATA.grid;
+      const gx = Math.floor(x);
+      const gy = Math.floor(y);
+      if (gy < 0 || gy >= grid.length || gx < 0 || gx >= grid[0].length) return true;
+      return grid[gy][gx] === 1;
+    }
+
+    // --- ОБНОВЛЕНИЕ ФИЗИКИ ---
+    let lastStepSound = 0;
+    function update(dt) {
+      if (gameState !== 'PLAYING') return;
+
+      // Поворот
+      if (keys.left) player.dir -= player.rotSpeed * dt;
+      if (keys.right) player.dir += player.rotSpeed * dt;
+
+      // Перемещение
+      let moveStep = 0;
+      if (keys.forward) moveStep += player.speed * dt;
+      if (keys.backward) moveStep -= player.speed * dt;
+
+      if (moveStep !== 0) {
+        const nextX = player.x + Math.cos(player.dir) * moveStep;
+        const nextY = player.y + Math.sin(player.dir) * moveStep;
+
+        // Коллизия со стенами с радиусом буфера
+        const buffer = 0.22;
+        const checkWall = (nx, ny) => {
+          return isWall(nx - buffer, ny - buffer) ||
+                 isWall(nx + buffer, ny - buffer) ||
+                 isWall(nx - buffer, ny + buffer) ||
+                 isWall(nx + buffer, ny + buffer);
+        };
+
+        if (!checkWall(nextX, player.y)) player.x = nextX;
+        if (!checkWall(player.x, nextY)) player.y = nextY;
+
+        // Звук шагов
+        const now = performance.now();
+        if (now - lastStepSound > 320) {
+          sfx.playStep();
+          lastStepSound = now;
+        }
+      }
+
+      // Сбор кристаллов
+      items.forEach(it => {
+        if (!it.collected) {
+          const dist = Math.hypot(player.x - it.x, player.y - it.y);
+          if (dist < 0.45) {
+            it.collected = true;
+            player.collected++;
+            sfx.playPickup();
+            if (player.collected >= player.totalCrystals) {
+              exitPortal.active = true;
+            }
+            updateHUD();
+          }
+        }
+      });
+
+      // Проверка портала
+      const distExit = Math.hypot(player.x - exitPortal.x, player.y - exitPortal.y);
+      if (exitPortal.active && distExit < 0.6) {
+        endGame(true);
+      }
+    }
+
+    // --- РЕНДЕРИНГ 3D (RAYCASTING) ---
+    function render() {
+      const w = canvas.width;
+      const h = canvas.height;
+      const halfH = h / 2;
+
+      // Отрисовка пола и потолка (градиенты)
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, halfH);
+      skyGrad.addColorStop(0, '#0a0a14');
+      skyGrad.addColorStop(1, '#1b1a2e');
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, w, halfH);
+
+      const floorGrad = ctx.createLinearGradient(0, halfH, 0, h);
+      floorGrad.addColorStop(0, '#151515');
+      floorGrad.addColorStop(1, '#050505');
+      ctx.fillStyle = floorGrad;
+      ctx.fillRect(0, halfH, w, halfH);
+
+      // Бросаем лучи (Raycasting)
+      const rayStep = FOV / NUM_RAYS;
+      const stripWidth = w / NUM_RAYS;
+
+      for (let i = 0; i < NUM_RAYS; i++) {
+        const rayAngle = (player.dir - FOV / 2) + i * rayStep;
+        let distance = 0;
+        let hitWall = false;
+        let isVertical = false;
+
+        const sin = Math.sin(rayAngle);
+        const cos = Math.cos(rayAngle);
+
+        // Пошаговый DDA-подобный маршинг луча
+        let checkX = player.x;
+        let checkY = player.y;
+        const stepDist = 0.025;
+
+        while (!hitWall && distance < 16) {
+          distance += stepDist;
+          checkX = player.x + cos * distance;
+          checkY = player.y + sin * distance;
+
+          if (isWall(checkX, checkY)) {
+            hitWall = true;
+            // Определяем ориентацию грани
+            const prevX = checkX - cos * stepDist;
+            const prevY = checkY - sin * stepDist;
+            isVertical = Math.floor(prevX) !== Math.floor(checkX);
+          }
+        }
+
+        // Коррекция рыбьего глаза
+        const correctDist = distance * Math.cos(rayAngle - player.dir);
+        ZBuffer[i] = correctDist;
+
+        if (hitWall) {
+          const wallHeight = Math.min(h * 1.5, (h / correctDist));
+          const top = halfH - wallHeight / 2;
+
+          // Цветовая гамма Билайн: Желтый с контрастными полосами
+          let shade = 1 / (1 + correctDist * 0.18);
+          if (isVertical) shade *= 0.75;
+
+          const r = Math.min(255, Math.floor(255 * shade));
+          const g = Math.min(220, Math.floor(190 * shade));
+          const b = Math.min(100, Math.floor(20 * shade));
+
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+          ctx.fillRect(Math.floor(i * stripWidth), Math.floor(top), Math.ceil(stripWidth) + 1, Math.ceil(wallHeight));
+
+          // Горизонтальные стилизованные кибер-линии на стенах
+          ctx.fillStyle = `rgba(0, 0, 0, ${0.15 * shade})`;
+          const lineY = top + wallHeight * 0.45;
+          ctx.fillRect(Math.floor(i * stripWidth), Math.floor(lineY), Math.ceil(stripWidth) + 1, Math.ceil(wallHeight * 0.1));
+        }
+      }
+
+      // --- СПРАЙТЫ (Кристаллы и Портал) ---
+      const sprites = [];
+      items.forEach(it => {
+        if (!it.collected) {
+          sprites.push({ x: it.x, y: it.y, type: 'crystal' });
+        }
+      });
+      sprites.push({ x: exitPortal.x, y: exitPortal.y, type: 'portal' });
+
+      // Вычисление расстояния до спрайтов и их сортировка (от дальних к ближним)
+      sprites.forEach(s => {
+        s.dist = Math.hypot(player.x - s.x, player.y - s.y);
+      });
+      sprites.sort((a, b) => b.dist - a.dist);
+
+      sprites.forEach(sprite => {
+        const spriteX = sprite.x - player.x;
+        const spriteY = sprite.y - player.y;
+
+        // Трансформация в пространство взгляда
+        const cs = Math.cos(-player.dir);
+        const sn = Math.sin(-player.dir);
+        const rx = spriteX * cs - spriteY * sn;
+        const ry = spriteX * sn + spriteY * cs;
+
+        if (rx > 0.2) {
+          const screenX = (w / 2) * (1 + ry / (rx * Math.tan(FOV / 2)));
+          const spriteSize = Math.min(h * 2, h / rx);
+          const top = halfH - spriteSize / 2;
+          const left = screenX - spriteSize / 2;
+
+          // Проверка ZBuffer по центру спрайта
+          const rayIdx = Math.floor((screenX / w) * NUM_RAYS);
+          if (rayIdx >= 0 && rayIdx < NUM_RAYS && ZBuffer[rayIdx] > rx) {
+            if (sprite.type === 'crystal') {
+              // Отрисовка светящегося кристалла
+              const pulse = Math.sin(performance.now() * 0.006) * 0.15 + 1;
+              const radius = (spriteSize * 0.2) * pulse;
+
+              ctx.save();
+              ctx.translate(screenX, halfH);
+              ctx.shadowColor = '#00f0ff';
+              ctx.shadowBlur = 15;
+              ctx.fillStyle = '#00ffff';
+
+              ctx.beginPath();
+              ctx.moveTo(0, -radius * 1.5);
+              ctx.lineTo(radius, 0);
+              ctx.lineTo(0, radius * 1.5);
+              ctx.lineTo(-radius, 0);
+              ctx.closePath();
+              ctx.fill();
+
+              ctx.fillStyle = '#ffffff';
+              ctx.beginPath();
+              ctx.arc(0, 0, radius * 0.4, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.restore();
+            } else if (sprite.type === 'portal') {
+              // Отрисовка телепорта
+              const isActive = exitPortal.active;
+              const color = isActive ? '#00ff66' : '#555555';
+              const pulse = isActive ? Math.sin(performance.now() * 0.01) * 0.1 + 1 : 1;
+              const radius = (spriteSize * 0.35) * pulse;
+
+              ctx.save();
+              ctx.translate(screenX, halfH);
+              ctx.shadowColor = color;
+              ctx.shadowBlur = isActive ? 25 : 5;
+              ctx.strokeStyle = color;
+              ctx.lineWidth = 4;
+
+              ctx.beginPath();
+              ctx.arc(0, 0, radius, 0, Math.PI * 2);
+              ctx.stroke();
+
+              if (isActive) {
+                ctx.fillStyle = 'rgba(0, 255, 102, 0.35)';
+                ctx.fill();
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('ВЫХОД', 0, -radius - 8);
+              }
+              ctx.restore();
+            }
+          }
+        }
+      });
+
+      renderMinimap();
+    }
+
+    // --- МИНИ-КАРТА ---
+    function renderMinimap() {
+      const mw = minimapCanvas.width;
+      const mh = minimapCanvas.height;
+      mctx.clearRect(0, 0, mw, mh);
+
+      const grid = window.GAME_LEVEL_DATA.grid;
+      const cellW = mw / grid[0].length;
+      const cellH = mh / grid.length;
+
+      // Стены
+      for (let r = 0; r < grid.length; r++) {
+        for (let c = 0; c < grid[r].length; c++) {
+          if (grid[r][c] === 1) {
+            mctx.fillStyle = '#ffcc00';
+            mctx.fillRect(c * cellW, r * cellH, cellW, cellH);
+          }
+        }
+      }
+
+      // Кристаллы
+      items.forEach(it => {
+        if (!it.collected) {
+          mctx.fillStyle = '#00ffff';
+          mctx.beginPath();
+          mctx.arc(it.x * cellW, it.y * cellH, cellW * 0.4, 0, Math.PI * 2);
+          mctx.fill();
+        }
+      });
+
+      // Портал
+      mctx.fillStyle = exitPortal.active ? '#00ff66' : '#777777';
+      mctx.fillRect((exitPortal.x - 0.4) * cellW, (exitPortal.y - 0.4) * cellH, cellW * 0.8, cellH * 0.8);
+
+      // Игрок и конус обзора
+      const px = player.x * cellW;
+      const py = player.y * cellH;
+
+      mctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+      mctx.beginPath();
+      mctx.moveTo(px, py);
+      mctx.arc(px, py, cellW * 3.5, player.dir - FOV / 2, player.dir + FOV / 2);
+      mctx.closePath();
+      mctx.fill();
+
+      mctx.fillStyle = '#ff3838';
+      mctx.beginPath();
+      mctx.arc(px, py, cellW * 0.5, 0, Math.PI * 2);
+      mctx.fill();
+    }
+
+    // --- ОСНОВНОЙ ЦИКЛ (REQUEST ANIMATION FRAME) ---
+    let lastTime = performance.now();
+    function gameLoop(time) {
+      const dt = Math.min((time - lastTime) / 1000, 0.1);
+      lastTime = time;
+
+      update(dt);
+      render();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Старт первичного цикла рендеринга
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>

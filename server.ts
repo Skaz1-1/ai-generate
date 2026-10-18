@@ -4,6 +4,9 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { extractHtmlCode, validateGameHtml } from './src/utils/gameValidator.js';
+import { verifyAndFixGame } from './src/utils/solvability/gameVerifier.ts';
+import { adaptUserPrompt } from './src/utils/promptAdapter.ts';
+import { injectRuntimeGuard } from './src/utils/gameRuntimeGuard.ts';
 
 dotenv.config();
 
@@ -46,23 +49,57 @@ function buildSystemInstruction(): string {
    - ЗАПРЕЩЕНО подключать внешние шрифты, внешние картинки (<img src="http...">) и аудиофайлы.
    - ЗАПРЕЩЕНО делать любые сетевые вызовы (fetch, XMLHttpRequest, WebSocket).
    - Графика должна быть нарисована программно: через HTML5 Canvas 2D или стилизованные элементы CSS/SVG.
-   - Звуки, если нужны, синтезируй через Web Audio API (AudioContext) простыми сигналами без внешних файлов, либо сделай игру с богатыми визуальными эффектами.
-3. УПРАВЛЕНИЕ И АДАПТИВНОСТЬ:
+   - Звуки, если нужны, синтезируй через Web Audio API (AudioContext) простыми сигналами без внешних файлов.
+3. ПРОХОДИМОСТЬ УРОВНЕЙ И СТРУКТУРА (ОБЯЗАТЕЛЬНО):
+   - Уровень ОБЯЗАН быть реально проходимым: выход не должен быть заблокирован глухой стеной, все обязательные предметы должны быть достижимы.
+   - В платформерах: расстояние и высота между платформами ОБЯЗАНЫ строго соответствовать силе прыжка и гравитации (не делай платформы выше, чем игрок может запрыгнуть!).
+   - Для игр с картой (лабиринт, сбор предметов, платформер) ОБЯЗАТЕЛЬНО объяви в самом начале тега <script> структуру window.GAME_LEVEL_DATA, например:
+     // Для лабиринтов:
+     window.GAME_LEVEL_DATA = {
+       genre: 'maze',
+       grid: [[0, 0, 1], [1, 0, 0]], // 0 = проход, 1 = стена
+       start: { x: 0, y: 0 },
+       exit: { x: 2, y: 1 },
+       collectibles: [{ x: 1, y: 0 }]
+     };
+     // Для платформеров:
+     window.GAME_LEVEL_DATA = {
+       genre: 'platformer',
+       physics: { gravity: 0.5, jumpForce: 10, speed: 4 },
+       start: { x: 50, y: 350 },
+       platforms: [{ x: 20, y: 400, w: 100, h: 20 }, { x: 160, y: 340, w: 100, h: 20 }],
+       exit: { x: 200, y: 320 },
+       collectibles: [{ x: 180, y: 300 }]
+     };
+     Используй window.GAME_LEVEL_DATA в коде игры для отрисовки и коллизий!
+4. УПРАВЛЕНИЕ И АДАПТИВНОСТЬ:
    - Игра ДОЛЖНА идеально работать как на мобильных устройствах (сенсорный экран), так и на ПК (мышь/клавиатура).
    - Если игра требует перемещения, ОБЯЗАТЕЛЬНО предусмотри экранные сенсорные кнопки (виртуальные стрелки / кнопки действий / тап / свайп) и поддержку клавиатуры (WASD / Стрелки / Пробел).
    - Вёрстка адаптивная (meta viewport), игра центрируется, элементы не вылезают за границы экрана.
-4. ИГРОВОЙ ЦИКЛ (ОБЯЗАТЕЛЬНО):
-   - Стартовый экран с названием игры, понятными правилами и крупной кнопкой "Играть" / "Старт".
-   - Активный игровой процесс с чётким HUD (счет, жизни/таймер, прогресс).
-   - Экран окончания (Победа или Поражение) с финальным счетом.
-   - Кнопка перезапуска ("Играть снова"), которая мгновенно сбрасывает состояние и начинает новую игру без перезагрузки страницы.
-5. АУДИТОРИЯ:
-   - Если в описании указаны дети: яркие цвета, дружелюбные формы, легкая сложность, поощрительные сообщения.
-   - Если указаны пожилые люди: особо крупный шрифт (от 22px+), очень крупные кнопки (от 56px+), высокий контраст, спокойный темп, отсутствие мелких деталей.
-   - Для обычной аудитории: динамичный и увлекательный геймплей.
-6. ДИЗАЙН:
-   - Стильное оформление, аккуратная типографика (системные шрифты: system-ui, sans-serif), фирменные акценты (желтый #FFBE00, черный, темно-серый, белый).
-7. ВЫВОД:
+5. ИГРОВОЙ ЦИКЛ И НАДЁЖНОСТЬ КНОПОК (ОБЯЗАТЕЛЬНО):
+   - Стартовый экран: <div id="start-screen" class="overlay"><button id="start-btn" class="big-btn">ИГРАТЬ</button></div>
+   - Экран победы/поражения: <div id="win-screen" class="overlay hidden"><button id="restart-btn" class="big-btn">ИГРАТЬ СНОВА</button></div>
+   - Обработчики кнопок ОБЯЗАТЕЛЬНО привязывай с проверкой существования:
+     const startBtn = document.getElementById('start-btn');
+     if (startBtn) {
+       startBtn.addEventListener('click', () => { startGame(); });
+       startBtn.addEventListener('touchend', (e) => { e.preventDefault(); startGame(); });
+     }
+     const restartBtn = document.getElementById('restart-btn');
+     if (restartBtn) {
+       restartBtn.addEventListener('click', () => { startGame(); });
+       restartBtn.addEventListener('touchend', (e) => { e.preventDefault(); startGame(); });
+     }
+   - Никаких ID-ошибок, кнопка должна гарантированно скрывать стартовый экран и запускать игру!
+6. ТРЕБОВАНИЯ ДЛЯ 3D И СЛОЖНОЙ ГРАФИКИ:
+   - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать внешние библиотеки (Three.js, Babylon.js, Pixi, Phaser).
+   - Запрещено использовать необъявленные классы THREE.*!
+   - Если пользователь просит 3D (например: "3D-лабиринт", "3D-раннер"): реализуй его через псевдо-3D алгоритм RAYCASTING на чистом Canvas 2D (лучеиспускание DDA, расчет дистанции до стен, градиенты стен, миникарта в углу) ЛИБО изометрию на Canvas 2D.
+   - ЗАПРЕЩЕНО использовать localStorage, sessionStorage, alert, confirm, prompt, canvas.requestPointerLock() без защиты try/catch!
+7. АУДИТОРИЯ:
+   - Для детей: яркие цвета, дружелюбные формы, легкая сложность.
+   - Для пожилых: крупный шрифт (от 22px+), очень крупные кнопки (от 56px+), высокий контраст, спокойный темп.
+8. ВЫВОД:
    - Возвращай ТОЛЬКО чистый код HTML-документа, начинающийся с <!DOCTYPE html> и заканчивающийся </html>.
    - Никаких вступительных или заключительных слов.`;
 }
@@ -95,7 +132,10 @@ app.post('/api/generate-game', async (req: Request, res: Response) => {
 
     const ai = getGenAIClient();
 
-    let fullPrompt = `Создай полноценную самостоятельную HTML5-мини-игру по следующему описанию:\n"${prompt.trim()}".\n`;
+    // Step 1: Pre-analyze prompt for 3D or unsupported mechanics and adapt
+    const adaptation = adaptUserPrompt(prompt);
+
+    let fullPrompt = `Создай полноценную самостоятельную HTML5-мини-игру по следующему описанию:\n"${adaptation.adaptedPrompt}".\n`;
     if (audience) {
       fullPrompt += `\nЦелевая аудитория: ${audience}.`;
     }
@@ -114,7 +154,7 @@ app.post('/api/generate-game', async (req: Request, res: Response) => {
     });
 
     const rawText = response.text || '';
-    const cleanHtml = extractHtmlCode(rawText);
+    let cleanHtml = extractHtmlCode(rawText);
 
     if (!cleanHtml) {
       return res.status(502).json({
@@ -130,10 +170,63 @@ app.post('/api/generate-game', async (req: Request, res: Response) => {
       });
     }
 
+    // Step 2: Inject Runtime Guard and sandbox safety polyfills
+    cleanHtml = injectRuntimeGuard(cleanHtml);
+
+    // Step 3: Solvability Verification & Programmatic Auto-Fix
+    let verif = verifyAndFixGame(cleanHtml);
+
+    // Step 4: If still not passable and has errors, attempt targeted AI repair (1 retry)
+    if (!verif.report.passed && verif.report.errors.length > 0) {
+      try {
+        const repairPrompt = `В сгенерированной игре обнаружены критические ошибки проходимости:
+${verif.report.errors.join('\n')}
+
+Вот текущий код игры:
+\`\`\`html
+${verif.html}
+\`\`\`
+
+ИСПРАВЬ УРОВЕНЬ:
+1. Обеспечь 100% проходимость: свободный путь от старта к финишу и доступность всех обязательных предметов.
+2. Устрани перекрывающие стены и ловушки.
+3. В платформерах сделай все платформы доступными для прыжка персонажа.
+4. Обнови window.GAME_LEVEL_DATA и саму отрисовку/коллизии.
+5. Верни ПОЛНЫЙ рабочий HTML-код от <!DOCTYPE html> до </html> без лишних слов.`;
+
+        const repairResponse = await ai.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: repairPrompt,
+          config: {
+            systemInstruction: buildSystemInstruction(),
+            temperature: 0.3,
+          },
+        });
+
+        const repairedHtml = extractHtmlCode(repairResponse.text || '');
+        if (repairedHtml && validateGameHtml(repairedHtml).isValid) {
+          const guardedRepaired = injectRuntimeGuard(repairedHtml);
+          const repairedVerif = verifyAndFixGame(guardedRepaired);
+          if (repairedVerif.report.passed || repairedVerif.wasFixed) {
+            verif = repairedVerif;
+          }
+        }
+      } catch (e) {
+        console.warn('Попытка автоматического исправления через ИИ не удалась:', e);
+      }
+    }
+
+    // Ensure final HTML has the runtime guard
+    const finalHtml = injectRuntimeGuard(verif.html);
+
     return res.json({
       success: true,
-      html: cleanHtml,
-      warnings: validation.warnings,
+      html: finalHtml,
+      solvability: verif.report,
+      wasFixed: verif.wasFixed,
+      fixSummary: verif.fixSummary,
+      adaptationNotice: adaptation.adaptationNotice,
+      warnings: [...validation.warnings, ...verif.report.warnings],
       modelUsed: GEMINI_MODEL,
     });
   } catch (error: any) {
@@ -181,8 +274,10 @@ ${currentHtml}
 ИНСТРУКЦИИ ДЛЯ ДОРАБОТКИ:
 1. Сохрани все уже работающие механики, Canvas-графику, управление и структуру игры.
 2. Аккуратно примени запрошенные изменения (например: изменить скорость, цвета, размеры кнопок или элементов, добавить бонусы, скорректировать правила).
-3. Убедись, что игра по-прежнему остаётся на 100% автономной, без внешних CDN, без сетевых запросов и с поддержкой сенсорного и клавиатурного управления.
-4. Верни ПОЛНЫЙ обновлённый HTML-код игры от <!DOCTYPE html> до </html> без каких-либо вводных или заключительных слов.`;
+3. Убедись, что после изменений уровень ОСТАЁТСЯ 100% проходимым (финиш и предметы достижимы).
+4. Обнови window.GAME_LEVEL_DATA синхронно с кодом.
+5. Игра по-прежнему должна оставаться на 100% автономной, без внешних CDN и сетевых вызовов.
+6. Верни ПОЛНЫЙ обновлённый HTML-код игры от <!DOCTYPE html> до </html> без каких-либо вводных или заключительных слов.`;
 
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
@@ -209,10 +304,18 @@ ${currentHtml}
       });
     }
 
+    // Solvability check and runtime guard on modified game
+    const guardedHtml = injectRuntimeGuard(cleanHtml);
+    const verif = verifyAndFixGame(guardedHtml);
+    const finalHtml = injectRuntimeGuard(verif.html);
+
     return res.json({
       success: true,
-      html: cleanHtml,
-      warnings: validation.warnings,
+      html: finalHtml,
+      solvability: verif.report,
+      wasFixed: verif.wasFixed,
+      fixSummary: verif.fixSummary,
+      warnings: [...validation.warnings, ...verif.report.warnings],
       modelUsed: GEMINI_MODEL,
     });
   } catch (error: any) {

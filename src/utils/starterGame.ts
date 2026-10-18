@@ -158,6 +158,13 @@ export const STARTER_GAME_HTML = `<!DOCTYPE html>
   </div>
 
   <script>
+    window.GAME_LEVEL_DATA = {
+      genre: 'collector',
+      player: { x: 180, y: 180, radius: 14 },
+      targetScore: 20,
+      totalItems: 20
+    };
+
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const scoreEl = document.getElementById('score');

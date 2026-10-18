@@ -107,7 +107,23 @@ export function validateGameHtml(html: string): ValidationResult {
     };
   }
 
-  // 4. Recommend meta viewport for mobile friendliness
+  // 4. Check for undefined 3D library calls without library definition
+  const unsupportedEngineRegex = /(?:new\s+THREE\.|THREE\.\w+|new\s+BABYLON\.|BABYLON\.\w+)/;
+  if (unsupportedEngineRegex.test(html)) {
+    return {
+      isValid: false,
+      error: 'Игра пытается обращаться к Three.js / WebGL-движку, который не поддерживается в автономном режиме. Игра должна использовать автономный Canvas 2D (Raycasting или изометрию).',
+      warnings,
+    };
+  }
+
+  // 5. Check that game has interactive start controls
+  const hasButton = /<button[\s>]/i.test(html) || /<input[^>]+type=["'](?:button|submit)["']/i.test(html);
+  if (!hasButton) {
+    warnings.push('В игре не обнаружено стандартного тега <button> для запуска. Рекомендуется явная кнопка старта.');
+  }
+
+  // 6. Recommend meta viewport for mobile friendliness
   if (!lower.includes('viewport')) {
     warnings.push('Рекомендуется добавить мета-тег viewport для идеального отображения на мобильных экранах.');
   }

@@ -1,3 +1,5 @@
+import type { SolvabilityReport } from './utils/solvability/types.ts';
+
 export interface GameVersion {
   id: string;
   version: number;
@@ -5,6 +7,9 @@ export interface GameVersion {
   html: string;
   timestamp: Date;
   warnings?: string[];
+  solvability?: SolvabilityReport;
+  wasFixed?: boolean;
+  adaptationNotice?: string;
 }
 
 export interface GenerationOptions {

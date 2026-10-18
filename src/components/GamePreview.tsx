@@ -137,6 +137,64 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
         </div>
       </div>
 
+      {/* 3D / Mechanics Adaptation Notice */}
+      {currentVersion.adaptationNotice && (
+        <div className="px-4 sm:px-5 py-2 text-xs flex items-center gap-2 border-b bg-amber-500/10 text-amber-900 border-amber-300">
+          <span className="font-bold flex items-center gap-1">🎮 Адаптация формата:</span>
+          <span>{currentVersion.adaptationNotice}</span>
+        </div>
+      )}
+
+      {/* Solvability Status Bar */}
+      {currentVersion.solvability && (
+        <div
+          className={`px-4 sm:px-5 py-2 text-xs flex flex-wrap items-center justify-between gap-2 border-b ${
+            currentVersion.solvability.passed
+              ? currentVersion.wasFixed
+                ? 'bg-amber-50/90 text-amber-900 border-amber-200'
+                : 'bg-emerald-50/90 text-emerald-900 border-emerald-200'
+              : 'bg-rose-50 text-rose-900 border-rose-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <span className="font-semibold flex items-center gap-1.5">
+              {currentVersion.solvability.passed ? (
+                currentVersion.wasFixed ? '⚡ Уровень автоматически исправлен:' : '✓ Проходимость проверена:'
+              ) : (
+                '⚠️ Внимание:'
+              )}
+            </span>
+            <span>
+              {currentVersion.solvability.genre === 'maze' && (
+                currentVersion.solvability.passed
+                  ? 'Свободный путь от старта к финишу подтверждён алгоритмом поиска пути (BFS).'
+                  : currentVersion.solvability.errors[0] || 'Выход или предметы заблокированы стенами.'
+              )}
+              {currentVersion.solvability.genre === 'platformer' && (
+                currentVersion.solvability.passed
+                  ? `Все платформы и предметы достижимы с учётом физики прыжков (${currentVersion.solvability.details?.maxJumpHeight || 100}px).`
+                  : currentVersion.solvability.errors[0] || 'Платформы превышают максимальную высоту прыжка.'
+              )}
+              {currentVersion.solvability.genre !== 'maze' && currentVersion.solvability.genre !== 'platformer' && (
+                currentVersion.solvability.passed
+                  ? 'Условие победы и возможность перезапуска подтверждены.'
+                  : currentVersion.solvability.errors[0] || 'Проверьте логику достижения победы.'
+              )}
+            </span>
+          </div>
+
+          {!currentVersion.solvability.passed && (
+            <button
+              type="button"
+              onClick={onModifyClick}
+              className="text-xs font-semibold text-rose-700 underline hover:text-rose-900 cursor-pointer"
+            >
+              Скорректировать уровень →
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Main Game Screen (Hero Element) */}
       <div className="bg-neutral-950 flex items-center justify-center p-2 sm:p-3">
         <iframe

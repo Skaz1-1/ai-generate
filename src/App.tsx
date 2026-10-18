@@ -25,6 +25,13 @@ export default function App() {
       prompt: 'Билайн Пакман: Сбор сот',
       html: STARTER_GAME_HTML,
       timestamp: new Date(),
+      solvability: {
+        passed: true,
+        genre: 'collector',
+        errors: [],
+        warnings: [],
+        details: { exitReachable: true, collectiblesTotal: 20, collectiblesReachable: 20 },
+      },
     },
   ]);
   const [currentVersionIndex, setCurrentVersionIndex] = useState(0);
@@ -104,14 +111,18 @@ export default function App() {
         html: data.html,
         timestamp: new Date(),
         warnings: data.warnings,
+        solvability: data.solvability,
+        wasFixed: data.wasFixed,
+        adaptationNotice: data.adaptationNotice,
       };
 
       setHistory((prev) => [...prev, newVersion]);
       setCurrentVersionIndex(history.length);
       setStage('ready');
-      setSuccessToast(`Игра создана! Готова Версия ${newVersion.version}.`);
+      const fixNote = data.wasFixed ? ' (уровень автоматически скорректирован)' : '';
+      setSuccessToast(`Игра создана! Готова Версия ${newVersion.version}${fixNote}.`);
       setTimeout(() => setStage('idle'), 1500);
-      setTimeout(() => setSuccessToast(null), 4000);
+      setTimeout(() => setSuccessToast(null), 5000);
     } catch (err: any) {
       console.error(err);
       setStage('idle');
@@ -165,12 +176,15 @@ export default function App() {
         html: data.html,
         timestamp: new Date(),
         warnings: data.warnings,
+        solvability: data.solvability,
+        wasFixed: data.wasFixed,
       };
 
       setHistory((prev) => [...prev, newVersion]);
       setCurrentVersionIndex(history.length);
       setStage('ready');
-      setSuccessToast(`Изменения применены! Создана Версия ${newVersion.version}.`);
+      const fixNote = data.wasFixed ? ' (уровень проверен и скорректирован)' : '';
+      setSuccessToast(`Изменения применены! Создана Версия ${newVersion.version}${fixNote}.`);
       setTimeout(() => setStage('idle'), 1500);
       setTimeout(() => setSuccessToast(null), 4000);
     } catch (err: any) {
