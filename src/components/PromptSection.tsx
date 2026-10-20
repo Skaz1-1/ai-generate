@@ -44,13 +44,13 @@ export const PromptSection: React.FC<PromptSectionProps> = ({
   };
 
   return (
-    <section className="bg-white border border-neutral-200/90 rounded-2xl p-5 sm:p-7 shadow-sm space-y-5">
+    <section className="bg-white border border-neutral-200/90 dark:bg-neutral-800 dark:border-neutral-700/80 rounded-2xl p-5 sm:p-7 shadow-sm space-y-5 transition-colors">
       {/* Title & Subtitle */}
       <div className="space-y-1 text-center sm:text-left">
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight">
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 dark:text-white tracking-tight">
           Создай свою игру
         </h2>
-        <p className="text-sm sm:text-base text-neutral-600">
+        <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400">
           Опиши идею — ИИ превратит её в игру
         </p>
       </div>
@@ -65,13 +65,13 @@ export const PromptSection: React.FC<PromptSectionProps> = ({
             disabled={isLoading}
             rows={4}
             placeholder="Какую игру вы хотите создать? Например: Пакман собирает монетки в лабиринте и уворачивается от привидений..."
-            className="w-full bg-neutral-50/70 border border-neutral-300 rounded-2xl px-4 py-3.5 text-base text-neutral-900 placeholder:text-neutral-600 focus:outline-none focus:bg-white focus:border-amber-400 focus:ring-4 focus:ring-amber-400/20 transition-all resize-y disabled:opacity-50"
+            className="w-full bg-neutral-50/70 border border-neutral-300 dark:bg-neutral-900/90 dark:border-neutral-700 dark:text-white dark:placeholder:text-neutral-500 rounded-2xl px-4 py-3.5 text-base text-neutral-900 placeholder:text-neutral-600 focus:outline-none focus:bg-white dark:focus:bg-neutral-900 focus:border-amber-400 focus:ring-4 focus:ring-amber-400/20 transition-all resize-y disabled:opacity-50"
           />
           {prompt && !isLoading && (
             <button
               type="button"
               onClick={() => setPrompt('')}
-              className="absolute top-3 right-3 text-neutral-400 hover:text-neutral-700 p-1.5 rounded-lg bg-white border border-neutral-200 shadow-sm transition-colors"
+              className="absolute top-3 right-3 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 p-1.5 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 shadow-sm transition-colors"
               title="Очистить поле"
               aria-label="Очистить поле ввода"
             >
@@ -87,9 +87,9 @@ export const PromptSection: React.FC<PromptSectionProps> = ({
         <button
           type="button"
           onClick={() => setShowSettings(!showSettings)}
-          className="text-xs font-medium text-neutral-600 hover:text-neutral-900 transition-colors flex items-center justify-center sm:justify-start gap-1.5 py-2 px-3 rounded-xl hover:bg-neutral-100 border border-transparent hover:border-neutral-200 cursor-pointer"
+          className="text-xs font-medium text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white transition-colors flex items-center justify-center sm:justify-start gap-1.5 py-2 px-3 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-700 border border-transparent hover:border-neutral-200 dark:hover:border-neutral-600 cursor-pointer"
         >
-          <SlidersHorizontal className="w-3.5 h-3.5 text-neutral-500" />
+          <SlidersHorizontal className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
           <span>Настройки игры</span>
           {showSettings ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
         </button>
@@ -109,9 +109,9 @@ export const PromptSection: React.FC<PromptSectionProps> = ({
 
       {/* Collapsible Block «Настройки игры» */}
       {showSettings && (
-        <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-xl grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs animate-in fade-in duration-150">
+        <div className="p-4 bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-700 rounded-xl grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs animate-in fade-in duration-150">
           <div>
-            <span className="block text-neutral-700 mb-2 font-semibold">Для кого игра:</span>
+            <span className="block text-neutral-700 dark:text-neutral-300 mb-2 font-semibold">Для кого игра:</span>
             <div className="flex flex-wrap gap-1.5">
               {['Любая', 'Дети (до 12 лет)', 'Пожилые люди (60+)', 'Обычная'].map((aud) => (
                 <button
@@ -120,8 +120,8 @@ export const PromptSection: React.FC<PromptSectionProps> = ({
                   onClick={() => setOptions((prev) => ({ ...prev, audience: aud }))}
                   className={`px-3 py-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
                     options.audience === aud
-                      ? 'bg-neutral-900 text-white border-neutral-900 font-semibold'
-                      : 'bg-white border-neutral-300 text-neutral-700 hover:border-neutral-400'
+                      ? 'bg-neutral-900 text-white border-neutral-900 dark:bg-amber-400 dark:text-neutral-950 dark:border-amber-400 font-bold'
+                      : 'bg-white border-neutral-300 text-neutral-700 hover:border-neutral-400 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-700'
                   }`}
                 >
                   {aud}
@@ -131,7 +131,7 @@ export const PromptSection: React.FC<PromptSectionProps> = ({
           </div>
 
           <div>
-            <span className="block text-neutral-700 mb-2 font-semibold">Сложность:</span>
+            <span className="block text-neutral-700 dark:text-neutral-300 mb-2 font-semibold">Сложность:</span>
             <div className="flex flex-wrap gap-1.5">
               {['Легкая', 'Средняя', 'Высокая'].map((diff) => (
                 <button
@@ -140,8 +140,8 @@ export const PromptSection: React.FC<PromptSectionProps> = ({
                   onClick={() => setOptions((prev) => ({ ...prev, difficulty: diff }))}
                   className={`px-3 py-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
                     options.difficulty === diff
-                      ? 'bg-neutral-900 text-white border-neutral-900 font-semibold'
-                      : 'bg-white border-neutral-300 text-neutral-700 hover:border-neutral-400'
+                      ? 'bg-neutral-900 text-white border-neutral-900 dark:bg-amber-400 dark:text-neutral-950 dark:border-amber-400 font-bold'
+                      : 'bg-white border-neutral-300 text-neutral-700 hover:border-neutral-400 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-700'
                   }`}
                 >
                   {diff}
@@ -153,8 +153,8 @@ export const PromptSection: React.FC<PromptSectionProps> = ({
       )}
 
       {/* Compact Clickable Idea Presets */}
-      <div className="pt-2 border-t border-neutral-100 space-y-2">
-        <div className="text-xs text-neutral-600 font-medium">
+      <div className="pt-2 border-t border-neutral-100 dark:border-neutral-700/60 space-y-2">
+        <div className="text-xs text-neutral-600 dark:text-neutral-400 font-medium">
           Или выберите готовую идею:
         </div>
 
@@ -165,17 +165,17 @@ export const PromptSection: React.FC<PromptSectionProps> = ({
               type="button"
               onClick={() => handleSelectPreset(p.text)}
               disabled={isLoading}
-              className="text-left p-3 rounded-xl bg-neutral-50/80 border border-neutral-200 hover:border-amber-400 hover:bg-amber-50/40 transition-all cursor-pointer disabled:opacity-40 group"
+              className="text-left p-3 rounded-xl bg-neutral-50/80 dark:bg-neutral-900/50 border border-neutral-200 dark:border-neutral-700 hover:border-amber-400 hover:bg-amber-50/40 dark:hover:bg-neutral-700/40 dark:hover:border-amber-400 transition-all cursor-pointer disabled:opacity-40 group"
             >
               <div className="flex items-center justify-between gap-1 mb-1">
-                <span className="text-xs font-bold text-neutral-900 group-hover:text-neutral-950">
+                <span className="text-xs font-bold text-neutral-900 dark:text-white group-hover:text-neutral-950 dark:group-hover:text-amber-400">
                   {p.title}
                 </span>
-                <span className="text-[10px] text-neutral-700 bg-white border border-neutral-200/80 px-1.5 py-0.5 rounded">
+                <span className="text-[10px] text-neutral-700 dark:text-neutral-300 bg-white dark:bg-neutral-800 border border-neutral-200/80 dark:border-neutral-700 px-1.5 py-0.5 rounded">
                   {p.tag}
                 </span>
               </div>
-              <p className="text-[11px] text-neutral-700 line-clamp-2 leading-relaxed">
+              <p className="text-[11px] text-neutral-700 dark:text-neutral-400 line-clamp-2 leading-relaxed">
                 {p.text}
               </p>
             </button>

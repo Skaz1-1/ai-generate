@@ -8,7 +8,27 @@ import { GameVersion, GenerationOptions, GenerationStage } from './types.ts';
 import { STARTER_GAME_HTML } from './utils/starterGame.ts';
 import { AlertCircle, X, CheckCircle2 } from 'lucide-react';
 
+function getInitialTheme(): 'light' | 'dark' {
+  try {
+    const saved = localStorage.getItem('beeline_theme');
+    if (saved === 'dark' || saved === 'light') {
+      return saved;
+    }
+  } catch (e) {
+    // Ignore storage restriction
+  }
+  if (
+    typeof window !== 'undefined' &&
+    window.matchMedia &&
+    window.matchMedia('(prefers-color-scheme: dark)').matches
+  ) {
+    return 'dark';
+  }
+  return 'light';
+}
+
 export default function App() {
+  const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
   const [prompt, setPrompt] = useState('');
   const [options, setOptions] = useState<GenerationOptions>({
     audience: 'Любая',
@@ -16,6 +36,24 @@ export default function App() {
   });
 
   const modificationRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('beeline_theme', theme);
+    } catch (e) {
+      // Ignore
+    }
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
 
   // History stack of generated game versions
   const [history, setHistory] = useState<GameVersion[]>([
@@ -225,26 +263,30 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-100/70 text-neutral-900 flex flex-col font-sans selection:bg-amber-300 selection:text-neutral-950">
+    <div className="min-h-screen bg-neutral-100/70 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 flex flex-col font-sans selection:bg-amber-300 selection:text-neutral-950 transition-colors">
       {/* Brand Header */}
-      <Header serverStatus={serverStatus} />
+      <Header
+        serverStatus={serverStatus}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
         {/* Error Alert */}
         {errorMessage && (
-          <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 flex items-start justify-between gap-3 shadow-xs animate-in fade-in duration-200">
+          <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 dark:bg-rose-950/60 dark:border-rose-900 dark:text-rose-200 flex items-start justify-between gap-3 shadow-xs animate-in fade-in duration-200">
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
               <div>
                 <h5 className="font-bold text-sm">Не удалось выполнить действие</h5>
-                <p className="text-xs sm:text-sm text-rose-700 mt-0.5 leading-relaxed">{errorMessage}</p>
+                <p className="text-xs sm:text-sm text-rose-700 dark:text-rose-300 mt-0.5 leading-relaxed">{errorMessage}</p>
               </div>
             </div>
             <button
               type="button"
               onClick={() => setErrorMessage(null)}
-              className="p-1 rounded-lg hover:bg-rose-100 text-rose-500 cursor-pointer"
+              className="p-1 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-500 cursor-pointer"
               aria-label="Закрыть"
             >
               <X className="w-4 h-4" />
@@ -254,15 +296,15 @@ export default function App() {
 
         {/* Success Toast */}
         {successToast && (
-          <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center justify-between gap-3 shadow-xs animate-in fade-in duration-200">
+          <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 dark:bg-emerald-950/60 dark:border-emerald-900 dark:text-emerald-200 flex items-center justify-between gap-3 shadow-xs animate-in fade-in duration-200">
             <div className="flex items-center gap-2.5">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span className="text-sm font-semibold">{successToast}</span>
             </div>
             <button
               type="button"
               onClick={() => setSuccessToast(null)}
-              className="p-1 rounded-lg hover:bg-emerald-100 text-emerald-600 cursor-pointer"
+              className="p-1 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400 cursor-pointer"
               aria-label="Закрыть"
             >
               <X className="w-4 h-4" />

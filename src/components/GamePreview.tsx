@@ -5,7 +5,6 @@ import {
   Maximize2,
   Minimize2,
   Code2,
-  Play,
   Copy,
   Check,
   Edit3,
@@ -54,17 +53,17 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
 
   return (
     <div
-      className={`bg-white border border-neutral-200/90 rounded-2xl overflow-hidden transition-all flex flex-col shadow-sm ${
+      className={`bg-white border border-neutral-200/90 dark:bg-neutral-800 dark:border-neutral-700/80 rounded-2xl overflow-hidden transition-all flex flex-col shadow-sm ${
         isFullscreen
           ? 'fixed inset-0 z-50 rounded-none bg-neutral-950 p-3'
           : 'relative'
       }`}
     >
       {/* Top Toolbar: Only the most essential visible actions */}
-      <div className="bg-neutral-50/80 px-4 sm:px-5 py-3 border-b border-neutral-200/80 flex flex-wrap items-center justify-between gap-3 shrink-0">
+      <div className="bg-neutral-50/80 dark:bg-neutral-900/80 px-4 sm:px-5 py-3 border-b border-neutral-200/80 dark:border-neutral-700 flex flex-wrap items-center justify-between gap-3 shrink-0">
         {/* Version indicator and history */}
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-neutral-900">
+          <span className="text-sm font-bold text-neutral-900 dark:text-white">
             Игра {currentVersion.version}
           </span>
 
@@ -78,8 +77,8 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
                   onClick={() => onSelectVersion(idx)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                     currentVersionIndex === idx
-                      ? 'bg-neutral-900 text-white'
-                      : 'bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-100'
+                      ? 'bg-neutral-900 text-white dark:bg-amber-400 dark:text-neutral-950 font-bold'
+                      : 'bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-100 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-700'
                   }`}
                 >
                   Игра {ver.version}
@@ -95,10 +94,10 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
           <button
             type="button"
             onClick={handleRestart}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-neutral-300 hover:bg-neutral-50 text-neutral-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shadow-xs"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-neutral-300 hover:bg-neutral-50 text-neutral-800 dark:bg-neutral-700/80 dark:border-neutral-600 dark:text-neutral-100 dark:hover:bg-neutral-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shadow-xs"
             title="Запустить игру сначала"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-neutral-600" />
+            <RotateCcw className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300" />
             <span>Играть заново</span>
           </button>
 
@@ -106,10 +105,10 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
           <button
             type="button"
             onClick={onModifyClick}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-neutral-300 hover:bg-neutral-50 text-neutral-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shadow-xs"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-neutral-300 hover:bg-neutral-50 text-neutral-800 dark:bg-neutral-700/80 dark:border-neutral-600 dark:text-neutral-100 dark:hover:bg-neutral-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shadow-xs"
             title="Перейти к изменению игры"
           >
-            <Edit3 className="w-3.5 h-3.5 text-neutral-600" />
+            <Edit3 className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300" />
             <span>Изменить игру</span>
           </button>
 
@@ -128,7 +127,7 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
           <button
             type="button"
             onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-2 rounded-xl bg-white border border-neutral-200 text-neutral-500 hover:text-neutral-800 hover:bg-neutral-50 transition-colors cursor-pointer"
+            className="p-2 rounded-xl bg-white border border-neutral-200 text-neutral-500 hover:text-neutral-800 hover:bg-neutral-50 dark:bg-neutral-700/80 dark:border-neutral-600 dark:text-neutral-300 dark:hover:text-white transition-colors cursor-pointer"
             title={isFullscreen ? 'Свернуть' : 'Во весь экран'}
             aria-label={isFullscreen ? 'Свернуть' : 'Во весь экран'}
           >
@@ -139,7 +138,7 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
 
       {/* 3D / Mechanics Adaptation Notice */}
       {currentVersion.adaptationNotice && (
-        <div className="px-4 sm:px-5 py-2 text-xs flex items-center gap-2 border-b bg-amber-500/10 text-amber-900 border-amber-300">
+        <div className="px-4 sm:px-5 py-2 text-xs flex items-center gap-2 border-b bg-amber-500/10 text-amber-900 dark:text-amber-300 border-amber-300 dark:border-amber-500/30">
           <span className="font-bold flex items-center gap-1">🎮 Адаптация формата:</span>
           <span>{currentVersion.adaptationNotice}</span>
         </div>
@@ -155,9 +154,9 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
           className={`px-4 sm:px-5 py-2 text-xs flex flex-wrap items-center justify-between gap-2 border-b ${
             currentVersion.solvability.passed
               ? currentVersion.wasFixed
-                ? 'bg-amber-50/90 text-amber-900 border-amber-200'
-                : 'bg-emerald-50/90 text-emerald-900 border-emerald-200'
-              : 'bg-rose-50 text-rose-900 border-rose-200'
+                ? 'bg-amber-50/90 text-amber-900 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900'
+                : 'bg-emerald-50/90 text-emerald-900 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900'
+              : 'bg-rose-50 text-rose-900 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900'
           }`}
         >
           <div className="flex items-center gap-2">
@@ -189,7 +188,7 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
             <button
               type="button"
               onClick={onModifyClick}
-              className="text-xs font-semibold text-rose-700 underline hover:text-rose-900 cursor-pointer"
+              className="text-xs font-semibold text-rose-700 underline hover:text-rose-900 dark:text-rose-400 dark:hover:text-rose-200 cursor-pointer"
             >
               Скорректировать уровень →
             </button>
@@ -209,12 +208,12 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
       </div>
 
       {/* Collapsible «Дополнительно» (HTML source code) */}
-      <div className="border-t border-neutral-200/80 bg-neutral-50/60 px-4 py-2.5">
+      <div className="border-t border-neutral-200/80 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-900/60 px-4 py-2.5">
         <div className="flex items-center justify-between">
           <button
             type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="text-xs text-neutral-500 hover:text-neutral-800 font-medium flex items-center gap-1 py-1 cursor-pointer transition-colors"
+            className="text-xs text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200 font-medium flex items-center gap-1 py-1 cursor-pointer transition-colors"
           >
             <Code2 className="w-3.5 h-3.5 text-neutral-400" />
             <span>Дополнительно: Исходный HTML-код</span>
@@ -225,7 +224,7 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
             <button
               type="button"
               onClick={handleCopyCode}
-              className="flex items-center gap-1 text-xs font-medium text-neutral-600 hover:text-neutral-900 bg-white border border-neutral-200 px-2.5 py-1 rounded-lg cursor-pointer"
+              className="flex items-center gap-1 text-xs font-medium text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-2.5 py-1 rounded-lg cursor-pointer transition-colors"
             >
               {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
               <span>{copied ? 'Скопировано' : 'Скопировать код'}</span>
