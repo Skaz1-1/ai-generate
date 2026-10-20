@@ -146,15 +146,24 @@ export function replaceLevelDataInHtml(html: string, newLevelData: MazeLevelData
  * Safely parses a JS object literal or JSON string without external eval.
  */
 function parseSafeJsObject(str: string): any {
+  // Strip comments: single-line //... and multi-line /*...*/
+  const noComments = str
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+
   // Try direct JSON.parse first
   try {
-    return JSON.parse(str);
+    return JSON.parse(noComments);
   } catch (e) {
-    // Convert unquoted keys: { key: 1 } -> { "key": 1 }
-    const jsonFormatted = str
-      .replace(/([{,]\s*)([a-zA-Z0-9_$]+)\s*:/g, '$1"$2":')
-      .replace(/'/g, '"')
-      .replace(/,\s*([}\]])/g, '$1');
-    return JSON.parse(jsonFormatted);
+    try {
+      // Convert unquoted keys: { key: 1 } -> { "key": 1 }
+      const jsonFormatted = noComments
+        .replace(/([{,]\s*)([a-zA-Z0-9_$]+)\s*:/g, '$1"$2":')
+        .replace(/'/g, '"')
+        .replace(/,\s*([}\]])/g, '$1');
+      return JSON.parse(jsonFormatted);
+    } catch (err) {
+      return null;
+    }
   }
 }

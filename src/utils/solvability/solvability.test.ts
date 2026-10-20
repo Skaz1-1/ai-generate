@@ -101,6 +101,43 @@ test('Maze Solver: Solid impassable wall across map is detected and carved', () 
   assert.equal(fixedReport.passed, true);
 });
 
+test('Maze Solver: Handles fractional continuous coordinates (e.g. 1.5) without crashing', () => {
+  const level: MazeLevelData = {
+    genre: 'maze',
+    grid: [
+      [1, 1, 1, 1],
+      [1, 0, 0, 1],
+      [1, 1, 0, 1],
+      [1, 1, 1, 1],
+    ],
+    start: { x: 1.5, y: 1.5 },
+    exit: { x: 2.5, y: 2.5 },
+    collectibles: [{ x: 2.5, y: 1.5 }],
+  };
+
+  const report = verifyMazeSolvability(level);
+  assert.equal(report.passed, true);
+  assert.equal(report.errors.length, 0);
+
+  // Block exit with wall and ensure autoFix works on fractional points
+  const blockedLevel: MazeLevelData = {
+    genre: 'maze',
+    grid: [
+      [1, 1, 1, 1],
+      [1, 0, 1, 1],
+      [1, 1, 0, 1],
+      [1, 1, 1, 1],
+    ],
+    start: { x: 1.5, y: 1.5 },
+    exit: { x: 2.5, y: 2.5 },
+  };
+
+  const { fixedData, changesMade } = autoFixMaze(blockedLevel);
+  assert.ok(changesMade.length > 0);
+  const fixedReport = verifyMazeSolvability(fixedData);
+  assert.equal(fixedReport.passed, true);
+});
+
 // ------------------- PLATFORMER TESTS -------------------
 
 test('Platformer Solver: Computes physics parameters accurately', () => {
