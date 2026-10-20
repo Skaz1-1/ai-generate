@@ -120,7 +120,7 @@ export default function App() {
       setCurrentVersionIndex(history.length);
       setStage('ready');
       const fixNote = data.wasFixed ? ' (уровень автоматически скорректирован)' : '';
-      setSuccessToast(`Игра создана! Готова Версия ${newVersion.version}${fixNote}.`);
+      setSuccessToast(`Игра создана! Готова Игра ${newVersion.version}${fixNote}.`);
       setTimeout(() => setStage('idle'), 1500);
       setTimeout(() => setSuccessToast(null), 5000);
     } catch (err: any) {
@@ -184,7 +184,7 @@ export default function App() {
       setCurrentVersionIndex(history.length);
       setStage('ready');
       const fixNote = data.wasFixed ? ' (уровень проверен и скорректирован)' : '';
-      setSuccessToast(`Изменения применены! Создана Версия ${newVersion.version}${fixNote}.`);
+      setSuccessToast(`Изменения применены! Создана Игра ${newVersion.version}${fixNote}.`);
       setTimeout(() => setStage('idle'), 1500);
       setTimeout(() => setSuccessToast(null), 4000);
     } catch (err: any) {

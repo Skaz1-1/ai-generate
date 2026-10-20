@@ -65,10 +65,10 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
         {/* Version indicator and history */}
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-neutral-900">
-            Версия {currentVersion.version}
+            Игра {currentVersion.version}
           </span>
 
-          {/* Compact version picker if multiple versions exist */}
+          {/* Compact game picker if multiple games exist */}
           {history.length > 1 && (
             <div className="flex items-center gap-1 ml-2">
               {history.map((ver, idx) => (
@@ -82,7 +82,7 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
                       : 'bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-100'
                   }`}
                 >
-                  Версия {ver.version}
+                  Игра {ver.version}
                 </button>
               ))}
             </div>
@@ -145,8 +145,12 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
         </div>
       )}
 
-      {/* Solvability Status Bar */}
-      {currentVersion.solvability && (
+      {/* Solvability Status Bar (shown for mazes, platformers, auto-fixes or issues) */}
+      {currentVersion.solvability &&
+        (!currentVersion.solvability.passed ||
+          currentVersion.wasFixed ||
+          currentVersion.solvability.genre === 'maze' ||
+          currentVersion.solvability.genre === 'platformer') && (
         <div
           className={`px-4 sm:px-5 py-2 text-xs flex flex-wrap items-center justify-between gap-2 border-b ${
             currentVersion.solvability.passed
@@ -175,10 +179,8 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
                   ? `Все платформы и предметы достижимы с учётом физики прыжков (${currentVersion.solvability.details?.maxJumpHeight || 100}px).`
                   : currentVersion.solvability.errors[0] || 'Платформы превышают максимальную высоту прыжка.'
               )}
-              {currentVersion.solvability.genre !== 'maze' && currentVersion.solvability.genre !== 'platformer' && (
-                currentVersion.solvability.passed
-                  ? 'Условие победы и возможность перезапуска подтверждены.'
-                  : currentVersion.solvability.errors[0] || 'Проверьте логику достижения победы.'
+              {currentVersion.solvability.genre !== 'maze' && currentVersion.solvability.genre !== 'platformer' && !currentVersion.solvability.passed && (
+                currentVersion.solvability.errors[0] || 'Проверьте логику достижения победы.'
               )}
             </span>
           </div>
@@ -200,7 +202,7 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
         <iframe
           key={iframeKey}
           srcDoc={currentVersion.html}
-          title={`Игра - Версия ${currentVersion.version}`}
+          title={`Игра ${currentVersion.version}`}
           sandbox="allow-scripts"
           className="w-full h-[520px] sm:h-[580px] border-0 bg-black block rounded-xl"
         />
