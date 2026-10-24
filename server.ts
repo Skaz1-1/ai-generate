@@ -7,6 +7,7 @@ import { extractHtmlCode, validateGameHtml } from './src/utils/gameValidator.js'
 import { verifyAndFixGame } from './src/utils/solvability/gameVerifier.ts';
 import { adaptUserPrompt } from './src/utils/promptAdapter.ts';
 import { injectRuntimeGuard } from './src/utils/gameRuntimeGuard.ts';
+import { formatFriendlyErrorMessage } from './src/utils/errorMessage.ts';
 
 dotenv.config();
 
@@ -216,6 +217,15 @@ ${verif.html}
       }
     }
 
+    // If after all repair attempts the game still has fatal issues, reject with a friendly error
+    if (!verif.report.passed && verif.report.status === 'issue_detected') {
+      console.warn('Игра не прошла проверку проходимости после всех попыток:', verif.report.errors);
+      return res.status(422).json({
+        success: false,
+        error: 'Не удалось создать игру. Попробуйте ещё раз.',
+      });
+    }
+
     // Ensure final HTML has the runtime guard
     const finalHtml = injectRuntimeGuard(verif.html);
 
@@ -230,10 +240,10 @@ ${verif.html}
       modelUsed: GEMINI_MODEL,
     });
   } catch (error: any) {
-    console.error('Ошибка при генерации игры:', error);
-    const message = error?.message || 'Неизвестная ошибка на сервере при обращении к ИИ.';
+    console.error('Ошибка при генерации игры (технический лог):', error);
+    const friendlyMessage = formatFriendlyErrorMessage(error);
     return res.status(500).json({
-      error: `Не удалось сгенерировать игру: ${message}`,
+      error: friendlyMessage,
     });
   }
 });
@@ -307,6 +317,16 @@ ${currentHtml}
     // Solvability check and runtime guard on modified game
     const guardedHtml = injectRuntimeGuard(cleanHtml);
     const verif = verifyAndFixGame(guardedHtml);
+
+    // If modified game has detected issues that cannot be resolved, reject change cleanly
+    if (!verif.report.passed && verif.report.status === 'issue_detected') {
+      console.warn('Модифицированная игра не прошла проверку проходимости:', verif.report.errors);
+      return res.status(422).json({
+        success: false,
+        error: 'Не удалось создать игру. Попробуйте ещё раз. Предыдущая версия игры сохранена без изменений.',
+      });
+    }
+
     const finalHtml = injectRuntimeGuard(verif.html);
 
     return res.json({
@@ -319,10 +339,10 @@ ${currentHtml}
       modelUsed: GEMINI_MODEL,
     });
   } catch (error: any) {
-    console.error('Ошибка при модификации игры:', error);
-    const message = error?.message || 'Ошибка на сервере при обновлении игры.';
+    console.error('Ошибка при модификации игры (технический лог):', error);
+    const friendlyMessage = formatFriendlyErrorMessage(error);
     return res.status(500).json({
-      error: `Не удалось изменить игру: ${message}. Предыдущая версия игры сохранена.`,
+      error: `${friendlyMessage} Предыдущая версия игры сохранена без изменений.`,
     });
   }
 });

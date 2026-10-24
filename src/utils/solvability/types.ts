@@ -43,8 +43,19 @@ export interface PlatformerLevelData {
   worldHeight?: number;
 }
 
+export interface CollectorLevelData {
+  genre: 'collector';
+  targetScore: number;
+  totalItems: number;
+  player?: Point & { radius?: number };
+  collectibles?: Point[];
+}
+
+export type VerificationStatus = 'verified' | 'issue_detected' | 'insufficient_data';
+
 export interface SolvabilityReport {
   passed: boolean;
+  status: VerificationStatus;
   genre: GameGenre;
   errors: string[];
   warnings: string[];

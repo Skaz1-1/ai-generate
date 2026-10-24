@@ -10,7 +10,7 @@
     "start": "NODE_ENV=production tsx server.ts",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "node --test src/**/*.test.ts src/utils/**/*.test.ts"
+    "test": "tsx --test src/utils/*.test.ts src/utils/solvability/*.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

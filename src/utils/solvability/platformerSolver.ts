@@ -97,6 +97,7 @@ export function verifyPlatformerSolvability(level: PlatformerLevelData): Solvabi
   if (platforms.length === 0) {
     return {
       passed: false,
+      status: 'issue_detected',
       genre: 'platformer',
       errors: ['В платформере отсутствуют платформы.'],
       warnings,
@@ -227,6 +228,7 @@ export function verifyPlatformerSolvability(level: PlatformerLevelData): Solvabi
 
   return {
     passed,
+    status: passed ? 'verified' : 'issue_detected',
     genre: 'platformer',
     errors,
     warnings,

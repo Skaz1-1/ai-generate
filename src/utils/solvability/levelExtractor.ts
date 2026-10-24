@@ -1,4 +1,4 @@
-import type { MazeLevelData, PlatformerLevelData, GameGenre } from './types.ts';
+import type { MazeLevelData, PlatformerLevelData, CollectorLevelData, GameGenre } from './types.ts';
 
 /**
  * Extracts structured level data from generated HTML code.
@@ -8,6 +8,7 @@ export function extractLevelDataFromHtml(html: string): {
   genre: GameGenre;
   mazeData?: MazeLevelData;
   platformerData?: PlatformerLevelData;
+  collectorData?: CollectorLevelData;
   rawJsonSnippet?: string;
 } {
   if (!html || typeof html !== 'string') {
@@ -32,6 +33,13 @@ export function extractLevelDataFromHtml(html: string): {
           return {
             genre: 'platformer',
             platformerData: parsed as PlatformerLevelData,
+            rawJsonSnippet: standardMatch[1],
+          };
+        }
+        if (parsed.genre === 'collector' && (parsed.targetScore !== undefined || parsed.totalItems !== undefined)) {
+          return {
+            genre: 'collector',
+            collectorData: parsed as CollectorLevelData,
             rawJsonSnippet: standardMatch[1],
           };
         }

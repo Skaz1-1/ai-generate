@@ -26,6 +26,7 @@ export function verifyMazeSolvability(level: MazeLevelData): SolvabilityReport {
   if (!grid || !Array.isArray(grid) || grid.length === 0 || !Array.isArray(grid[0])) {
     return {
       passed: false,
+      status: 'issue_detected',
       genre: 'maze',
       errors: ['Сетка лабиринта отсутствует или повреждена.'],
       warnings,
@@ -66,6 +67,7 @@ export function verifyMazeSolvability(level: MazeLevelData): SolvabilityReport {
   if (errors.length > 0) {
     return {
       passed: false,
+      status: 'issue_detected',
       genre: 'maze',
       errors,
       warnings,
@@ -135,6 +137,7 @@ export function verifyMazeSolvability(level: MazeLevelData): SolvabilityReport {
 
   return {
     passed,
+    status: passed ? 'verified' : 'issue_detected',
     genre: 'maze',
     errors,
     warnings,

@@ -6,7 +6,8 @@ import { GamePreview } from './components/GamePreview.tsx';
 import { ModificationSection } from './components/ModificationSection.tsx';
 import { GameVersion, GenerationOptions, GenerationStage } from './types.ts';
 import { STARTER_GAME_HTML } from './utils/starterGame.ts';
-import { AlertCircle, X, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, X, CheckCircle2, RotateCcw } from 'lucide-react';
+import { formatFriendlyErrorMessage } from './utils/errorMessage.ts';
 
 function getInitialTheme(): 'light' | 'dark' {
   try {
@@ -65,6 +66,7 @@ export default function App() {
       timestamp: new Date(),
       solvability: {
         passed: true,
+        status: 'verified',
         genre: 'collector',
         errors: [],
         warnings: [],
@@ -78,6 +80,7 @@ export default function App() {
   const [stage, setStage] = useState<GenerationStage>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
   // Server health state
@@ -162,11 +165,11 @@ export default function App() {
       setTimeout(() => setStage('idle'), 1500);
       setTimeout(() => setSuccessToast(null), 5000);
     } catch (err: any) {
-      console.error(err);
+      console.error('Ошибка создания игры:', err);
       setStage('idle');
-      setErrorMessage(
-        err.message || 'Произошла непредвиденная ошибка при создании игры. Попробуйте еще раз.'
-      );
+      const friendly = formatFriendlyErrorMessage(err);
+      setErrorMessage(friendly);
+      setRetryAction(() => () => handleGenerate());
     }
   };
 
@@ -221,16 +224,16 @@ export default function App() {
       setHistory((prev) => [...prev, newVersion]);
       setCurrentVersionIndex(history.length);
       setStage('ready');
-      const fixNote = data.wasFixed ? ' (уровень проверен и скорректирован)' : '';
+      const fixNote = data.wasFixed ? ' (уровень автоматически скорректирован)' : '';
       setSuccessToast(`Изменения применены! Создана Игра ${newVersion.version}${fixNote}.`);
       setTimeout(() => setStage('idle'), 1500);
       setTimeout(() => setSuccessToast(null), 4000);
     } catch (err: any) {
-      console.error(err);
+      console.error('Ошибка изменения игры:', err);
       setStage('idle');
-      setErrorMessage(
-        `${err.message} Предыдущая версия игры сохранена без изменений.`
-      );
+      const friendly = formatFriendlyErrorMessage(err);
+      setErrorMessage(`${friendly} Предыдущая версия игры сохранена без изменений.`);
+      setRetryAction(() => () => handleModify(modificationPrompt));
     }
   };
 
@@ -262,6 +265,14 @@ export default function App() {
     }
   };
 
+  // Retry handler
+  const handleRetry = () => {
+    if (retryAction) {
+      setErrorMessage(null);
+      retryAction();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-neutral-100/70 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 flex flex-col font-sans selection:bg-amber-300 selection:text-neutral-950 transition-colors">
       {/* Brand Header */}
@@ -279,13 +290,26 @@ export default function App() {
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
               <div>
-                <h5 className="font-bold text-sm">Не удалось выполнить действие</h5>
+                <h5 className="font-bold text-sm">Не удалось создать игру</h5>
                 <p className="text-xs sm:text-sm text-rose-700 dark:text-rose-300 mt-0.5 leading-relaxed">{errorMessage}</p>
+                {retryAction && (
+                  <button
+                    type="button"
+                    onClick={handleRetry}
+                    className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Попробовать снова
+                  </button>
+                )}
               </div>
             </div>
             <button
               type="button"
-              onClick={() => setErrorMessage(null)}
+              onClick={() => {
+                setErrorMessage(null);
+                setRetryAction(null);
+              }}
               className="p-1 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-500 cursor-pointer"
               aria-label="Закрыть"
             >
