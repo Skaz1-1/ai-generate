@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Sparkles, SlidersHorizontal, ArrowRight, X, ChevronDown, ChevronUp } from 'lucide-react';
-import { GenerationOptions } from '../types.ts';
+import { GenerationOptions, GameScale } from '../types.ts';
 
 interface PromptSectionProps {
   prompt: string;
@@ -14,17 +14,17 @@ interface PromptSectionProps {
 const PRESETS = [
   {
     title: '🐝 Медовая пчёлка',
-    tag: 'Для детей',
+    tag: 'Аркада',
     text: 'Красочная игра: весёлая пчёлка летает по поляне, собирает капли мёда и соты, уворачивается от серых тучек. Управление стрелками или нажатием на экран.',
   },
   {
     title: '🧠 Карточки на память',
-    tag: 'Для пожилых',
+    tag: 'Головоломка',
     text: 'Спокойный тренажёр памяти: очень крупные контрастные карточки с цифрами. Большие кнопки, без таймера и спешки, понятный крупный текст.',
   },
   {
     title: '⚡ Космо-лабиринт',
-    tag: 'Аркада',
+    tag: 'Лабиринт',
     text: 'Лабиринт: космический корабль собирает 10 энерго-кристаллов за 60 секунд. Удобные экранные кнопки и стрелки на клавиатуре.',
   },
 ];
@@ -65,13 +65,13 @@ export const PromptSection: React.FC<PromptSectionProps> = ({
             disabled={isLoading}
             rows={4}
             placeholder="Какую игру вы хотите создать? Например: Пакман собирает монетки в лабиринте и уворачивается от привидений..."
-            className="w-full bg-neutral-50/70 border border-neutral-300 dark:bg-neutral-900/90 dark:border-neutral-700 dark:text-white dark:placeholder:text-neutral-500 rounded-2xl px-4 py-3.5 text-base text-neutral-900 placeholder:text-neutral-600 focus:outline-none focus:bg-white dark:focus:bg-neutral-900 focus:border-amber-400 focus:ring-4 focus:ring-amber-400/20 transition-all resize-y disabled:opacity-50"
+            className="w-full bg-neutral-50/70 border border-neutral-300 dark:bg-neutral-900/90 dark:border-neutral-700 dark:text-white dark:placeholder:text-neutral-500 rounded-2xl pl-4 pr-12 sm:pr-14 py-3.5 text-base text-neutral-900 placeholder:text-neutral-600 focus:outline-none focus:bg-white dark:focus:bg-neutral-900 focus:border-amber-400 focus:ring-4 focus:ring-amber-400/20 transition-all resize-y disabled:opacity-50"
           />
           {prompt && !isLoading && (
             <button
               type="button"
               onClick={() => setPrompt('')}
-              className="absolute top-3 right-3 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 p-1.5 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 shadow-sm transition-colors"
+              className="absolute top-3 right-3 z-10 text-neutral-400 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 p-1.5 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 shadow-sm transition-colors cursor-pointer"
               title="Очистить поле"
               aria-label="Очистить поле ввода"
             >
@@ -111,43 +111,73 @@ export const PromptSection: React.FC<PromptSectionProps> = ({
       {showSettings && (
         <div className="p-4 bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-700 rounded-xl grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs animate-in fade-in duration-150">
           <div>
-            <span className="block text-neutral-700 dark:text-neutral-300 mb-2 font-semibold">Для кого игра:</span>
+            <div className="text-neutral-700 dark:text-neutral-300 font-semibold mb-2">
+              Масштаб игры:
+            </div>
             <div className="flex flex-wrap gap-1.5">
-              {['Любая', 'Дети (до 12 лет)', 'Пожилые люди (60+)', 'Обычная'].map((aud) => (
+              {[
+                { value: 'short', label: 'Короткая', hint: 'Один небольшой уровень или короткий раунд' },
+                { value: 'medium', label: 'Средняя', hint: 'Несколько этапов (по умолчанию)' },
+                { value: 'large', label: 'Большая', hint: 'Много этапов или уровней, долгое прохождение' },
+              ].map((s) => (
                 <button
-                  key={aud}
+                  key={s.value}
                   type="button"
-                  onClick={() => setOptions((prev) => ({ ...prev, audience: aud }))}
+                  onClick={() => setOptions((prev) => ({ ...prev, scale: s.value as GameScale }))}
+                  title={s.hint}
                   className={`px-3 py-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
-                    options.audience === aud
+                    options.scale === s.value
                       ? 'bg-neutral-900 text-white border-neutral-900 dark:bg-amber-400 dark:text-neutral-950 dark:border-amber-400 font-bold'
                       : 'bg-white border-neutral-300 text-neutral-700 hover:border-neutral-400 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-700'
                   }`}
                 >
-                  {aud}
+                  {s.label}
                 </button>
               ))}
             </div>
+            <p className="mt-1.5 text-[11px] text-neutral-500 dark:text-neutral-400 leading-normal">
+              {options.scale === 'short' && 'Один небольшой уровень или короткий раунд'}
+              {options.scale === 'medium' && 'Несколько этапов (сбалансированное прохождение)'}
+              {options.scale === 'large' && 'Много этапов или уровней, продолжительное прохождение'}
+            </p>
           </div>
 
           <div>
-            <span className="block text-neutral-700 dark:text-neutral-300 mb-2 font-semibold">Сложность:</span>
-            <div className="flex flex-wrap gap-1.5">
-              {['Легкая', 'Средняя', 'Высокая'].map((diff) => (
-                <button
-                  key={diff}
-                  type="button"
-                  onClick={() => setOptions((prev) => ({ ...prev, difficulty: diff }))}
-                  className={`px-3 py-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
-                    options.difficulty === diff
-                      ? 'bg-neutral-900 text-white border-neutral-900 dark:bg-amber-400 dark:text-neutral-950 dark:border-amber-400 font-bold'
-                      : 'bg-white border-neutral-300 text-neutral-700 hover:border-neutral-400 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-700'
-                  }`}
-                >
-                  {diff}
-                </button>
-              ))}
+            <div className="text-neutral-700 dark:text-neutral-300 font-semibold mb-2">
+              Сложность:
             </div>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { value: 'Лёгкая', label: 'Лёгкая', hint: 'Меньше препятствий, спокойнее темп и проще условия победы' },
+                { value: 'Средняя', label: 'Средняя', hint: 'Сбалансированные препятствия, темп и сложность' },
+                { value: 'Сложная', label: 'Сложная', hint: 'Больше испытаний, выше требования к реакции или точности' },
+              ].map((d) => {
+                const isSelected =
+                  options.difficulty === d.value ||
+                  (d.value === 'Лёгкая' && options.difficulty === 'Легкая') ||
+                  (d.value === 'Сложная' && options.difficulty === 'Высокая');
+                return (
+                  <button
+                    key={d.value}
+                    type="button"
+                    onClick={() => setOptions((prev) => ({ ...prev, difficulty: d.value as any }))}
+                    title={d.hint}
+                    className={`px-3 py-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'bg-neutral-900 text-white border-neutral-900 dark:bg-amber-400 dark:text-neutral-950 dark:border-amber-400 font-bold'
+                        : 'bg-white border-neutral-300 text-neutral-700 hover:border-neutral-400 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-700'
+                    }`}
+                  >
+                    {d.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-[11px] text-neutral-500 dark:text-neutral-400 leading-normal">
+              {(options.difficulty === 'Лёгкая' || options.difficulty === 'Легкая') && 'Меньше препятствий, спокойнее темп и проще условия победы'}
+              {options.difficulty === 'Средняя' && 'Сбалансированные препятствия, темп и сложность'}
+              {(options.difficulty === 'Сложная' || options.difficulty === 'Высокая') && 'Больше испытаний, выше требования к реакции или точности'}
+            </p>
           </div>
         </div>
       )}

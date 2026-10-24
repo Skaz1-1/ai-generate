@@ -4,12 +4,7 @@ import {
   RotateCcw,
   Maximize2,
   Minimize2,
-  Code2,
-  Copy,
-  Check,
   Edit3,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
 import { GameVersion } from '../types.ts';
 
@@ -32,23 +27,11 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
   onModifyClick,
   isLoading,
 }) => {
-  const [copied, setCopied] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const handleRestart = () => {
     setIframeKey((prev) => prev + 1);
-  };
-
-  const handleCopyCode = async () => {
-    try {
-      await navigator.clipboard.writeText(currentVersion.html);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (e) {
-      console.error('Failed to copy', e);
-    }
   };
 
   return (
@@ -89,12 +72,12 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
         </div>
 
         {/* Visible Actions: «Играть», «Изменить игру», «Скачать игру» */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {/* «Играть» / Перезапуск */}
           <button
             type="button"
             onClick={handleRestart}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-neutral-300 hover:bg-neutral-50 text-neutral-800 dark:bg-neutral-700/80 dark:border-neutral-600 dark:text-neutral-100 dark:hover:bg-neutral-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shadow-xs"
+            className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-white border border-neutral-300 hover:bg-neutral-50 text-neutral-800 dark:bg-neutral-700/80 dark:border-neutral-600 dark:text-neutral-100 dark:hover:bg-neutral-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shadow-xs"
             title="Запустить игру сначала"
           >
             <RotateCcw className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300" />
@@ -105,7 +88,7 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
           <button
             type="button"
             onClick={onModifyClick}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-neutral-300 hover:bg-neutral-50 text-neutral-800 dark:bg-neutral-700/80 dark:border-neutral-600 dark:text-neutral-100 dark:hover:bg-neutral-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shadow-xs"
+            className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-white border border-neutral-300 hover:bg-neutral-50 text-neutral-800 dark:bg-neutral-700/80 dark:border-neutral-600 dark:text-neutral-100 dark:hover:bg-neutral-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer shadow-xs"
             title="Перейти к изменению игры"
           >
             <Edit3 className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300" />
@@ -116,7 +99,7 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
           <button
             type="button"
             onClick={onDownload}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs sm:text-sm font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
+            className="flex items-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs sm:text-sm font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
             title="Скачать готовую игру на устройство"
           >
             <Download className="w-3.5 h-3.5" />
@@ -127,7 +110,7 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
           <button
             type="button"
             onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-2 rounded-xl bg-white border border-neutral-200 text-neutral-500 hover:text-neutral-800 hover:bg-neutral-50 dark:bg-neutral-700/80 dark:border-neutral-600 dark:text-neutral-300 dark:hover:text-white transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 rounded-xl bg-white border border-neutral-200 text-neutral-500 hover:text-neutral-800 hover:bg-neutral-50 dark:bg-neutral-700/80 dark:border-neutral-600 dark:text-neutral-300 dark:hover:text-white transition-colors cursor-pointer"
             title={isFullscreen ? 'Свернуть' : 'Во весь экран'}
             aria-label={isFullscreen ? 'Свернуть' : 'Во весь экран'}
           >
@@ -155,40 +138,6 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
           sandbox="allow-scripts"
           className="w-full h-[520px] sm:h-[580px] border-0 bg-black block rounded-xl"
         />
-      </div>
-
-      {/* Collapsible «Дополнительно» (HTML source code) */}
-      <div className="border-t border-neutral-200/80 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-900/60 px-4 py-2.5">
-        <div className="flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="text-xs text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200 font-medium flex items-center gap-1 py-1 cursor-pointer transition-colors"
-          >
-            <Code2 className="w-3.5 h-3.5 text-neutral-400" />
-            <span>Дополнительно: Исходный HTML-код</span>
-            {showAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-
-          {showAdvanced && (
-            <button
-              type="button"
-              onClick={handleCopyCode}
-              className="flex items-center gap-1 text-xs font-medium text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-2.5 py-1 rounded-lg cursor-pointer transition-colors"
-            >
-              {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-              <span>{copied ? 'Скопировано' : 'Скопировать код'}</span>
-            </button>
-          )}
-        </div>
-
-        {showAdvanced && (
-          <div className="mt-3 bg-neutral-950 rounded-xl p-3 font-mono text-xs text-neutral-300 max-h-64 overflow-auto select-all leading-relaxed">
-            <pre>
-              <code>{currentVersion.html}</code>
-            </pre>
-          </div>
-        )}
       </div>
     </div>
   );

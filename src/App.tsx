@@ -32,8 +32,8 @@ export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
   const [prompt, setPrompt] = useState('');
   const [options, setOptions] = useState<GenerationOptions>({
-    audience: 'Любая',
     difficulty: 'Средняя',
+    scale: 'medium',
   });
 
   const modificationRef = useRef<HTMLDivElement>(null);
@@ -129,8 +129,8 @@ export default function App() {
         },
         body: JSON.stringify({
           prompt: prompt.trim(),
-          audience: options.audience,
           difficulty: options.difficulty,
+          scale: options.scale,
         }),
       });
 
@@ -151,6 +151,7 @@ export default function App() {
         prompt: prompt.trim(),
         html: data.html,
         timestamp: new Date(),
+        scale: options.scale,
         warnings: data.warnings,
         solvability: data.solvability,
         wasFixed: data.wasFixed,
@@ -196,6 +197,7 @@ export default function App() {
         body: JSON.stringify({
           currentHtml: currentVersion.html,
           modificationPrompt: modificationPrompt.trim(),
+          scale: currentVersion.scale || options.scale,
         }),
       });
 
@@ -216,6 +218,7 @@ export default function App() {
         prompt: `${currentVersion.prompt} + [${modificationPrompt}]`,
         html: data.html,
         timestamp: new Date(),
+        scale: currentVersion.scale || options.scale,
         warnings: data.warnings,
         solvability: data.solvability,
         wasFixed: data.wasFixed,
@@ -280,6 +283,8 @@ export default function App() {
         serverStatus={serverStatus}
         theme={theme}
         onToggleTheme={toggleTheme}
+        currentHtml={currentVersion?.html}
+        currentGameTitle={`Игра ${currentVersion?.version || 1}: ${currentVersion?.prompt || 'Билайн Пакман'}`}
       />
 
       {/* Main Content Area */}
