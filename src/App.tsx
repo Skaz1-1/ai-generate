@@ -28,7 +28,7 @@ function getInitialTheme(): 'light' | 'dark' {
   return 'light';
 }
 
-const CLIENT_TIMEOUT_MS = 180000; // 180 секунд (согласовано с серверным лимитом и авто-исправлением)
+const CLIENT_TIMEOUT_MS = 85000; // 85 секунд (согласовано с серверным лимитом 80с и 90с таймаутом прокси GFE)
 
 export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
@@ -194,7 +194,7 @@ export default function App() {
         rawText = await response.text();
         data = rawText ? JSON.parse(rawText) : null;
       } catch (parseErr) {
-        console.warn('Не удалось распарсить ответ сервера как JSON:', parseErr, rawText?.slice(0, 100));
+        console.warn('Не удалось распарсить ответ сервера как JSON:', parseErr, rawText?.slice(0, 150));
       }
 
       if (!response.ok || !data?.success) {
@@ -207,14 +207,31 @@ export default function App() {
             retryable: data.retryable,
           };
         } else if (!data) {
-          errorToClassify = {
-            status: response.status === 200 ? 502 : response.status,
-            code: 'EMPTY_RESPONSE',
-            message: response.status === 200
-              ? 'Сервер вернул некорректный или пустой ответ. Попробуйте ещё раз.'
-              : (response.statusText || 'Не удалось получить ответ от сервера.'),
-            retryable: true,
-          };
+          const isHtml = rawText.trim().toLowerCase().startsWith('<!doctype html') || rawText.includes('<html');
+          if (isHtml) {
+            console.warn('[Сервер] Получен HTML-ответ вместо JSON (статус ' + response.status + '):', rawText.slice(0, 300));
+            const isGatewayTimeout =
+              response.status === 504 ||
+              rawText.includes('504') ||
+              rawText.toLowerCase().includes('gateway timeout');
+            errorToClassify = {
+              status: isGatewayTimeout ? 504 : (response.status === 200 ? 502 : response.status),
+              code: isGatewayTimeout ? 'TIMEOUT' : 'EMPTY_RESPONSE',
+              message: isGatewayTimeout
+                ? 'ИИ не успел создать игру за отведённое время. Попробуйте ещё раз.'
+                : 'Сервер вернул страницу ошибки вместо ответа ИИ. Попробуйте ещё раз.',
+              retryable: true,
+            };
+          } else {
+            errorToClassify = {
+              status: response.status === 200 ? 502 : response.status,
+              code: 'EMPTY_RESPONSE',
+              message: response.status === 200
+                ? 'Сервер вернул некорректный или пустой ответ. Попробуйте ещё раз.'
+                : (response.statusText || 'Не удалось получить ответ от сервера.'),
+              retryable: true,
+            };
+          }
         } else {
           errorToClassify = {
             status: response.status,
@@ -336,7 +353,7 @@ export default function App() {
         rawText = await response.text();
         data = rawText ? JSON.parse(rawText) : null;
       } catch (parseErr) {
-        console.warn('Не удалось распарсить ответ сервера как JSON:', parseErr, rawText?.slice(0, 100));
+        console.warn('Не удалось распарсить ответ сервера как JSON:', parseErr, rawText?.slice(0, 150));
       }
 
       if (!response.ok || !data?.success) {
@@ -350,15 +367,33 @@ export default function App() {
             isModification: true,
           };
         } else if (!data) {
-          errorToClassify = {
-            status: response.status === 200 ? 502 : response.status,
-            code: 'EMPTY_RESPONSE',
-            message: response.status === 200
-              ? 'Сервер вернул некорректный или пустой ответ. Предыдущая версия игры сохранена без изменений.'
-              : (response.statusText || 'Не удалось получить ответ от сервера. Предыдущая версия игры сохранена без изменений.'),
-            retryable: true,
-            isModification: true,
-          };
+          const isHtml = rawText.trim().toLowerCase().startsWith('<!doctype html') || rawText.includes('<html');
+          if (isHtml) {
+            console.warn('[Сервер] Получен HTML-ответ вместо JSON (статус ' + response.status + '):', rawText.slice(0, 300));
+            const isGatewayTimeout =
+              response.status === 504 ||
+              rawText.includes('504') ||
+              rawText.toLowerCase().includes('gateway timeout');
+            errorToClassify = {
+              status: isGatewayTimeout ? 504 : (response.status === 200 ? 502 : response.status),
+              code: isGatewayTimeout ? 'TIMEOUT' : 'EMPTY_RESPONSE',
+              message: isGatewayTimeout
+                ? 'ИИ не успел создать игру за отведённое время. Попробуйте ещё раз. Предыдущая версия игры сохранена без изменений.'
+                : 'Сервер вернул страницу ошибки вместо ответа ИИ. Предыдущая версия игры сохранена без изменений.',
+              retryable: true,
+              isModification: true,
+            };
+          } else {
+            errorToClassify = {
+              status: response.status === 200 ? 502 : response.status,
+              code: 'EMPTY_RESPONSE',
+              message: response.status === 200
+                ? 'Сервер вернул некорректный или пустой ответ. Предыдущая версия игры сохранена без изменений.'
+                : (response.statusText || 'Не удалось получить ответ от сервера. Предыдущая версия игры сохранена без изменений.'),
+              retryable: true,
+              isModification: true,
+            };
+          }
         } else {
           errorToClassify = {
             status: response.status,

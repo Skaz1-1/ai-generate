@@ -264,4 +264,37 @@ test('17. Ошибка { status: 200, message: "" } классифицирует
   assert.equal(classified.message, 'ИИ не смог подготовить готовую игру. Попробуйте изменить описание.');
 });
 
+// 18. HTML-страница 504 Gateway Timeout от внешнего прокси
+test('18. HTML-ответ 504 Gateway Timeout от прокси классифицируется как TIMEOUT (504)', () => {
+  const html504 = '<!DOCTYPE html><html lang="en"><head><title>504 Gateway Time-out</title></head><body><h1>Gateway Timeout</h1><p>The server didn\'t respond in time.</p></body></html>';
+  const classified = classifyApiError({ status: 504, message: html504 });
+
+  assert.equal(classified.code, 'TIMEOUT');
+  assert.equal(classified.httpStatus, 504);
+  assert.equal(classified.retryable, true);
+  assert.equal(classified.message, 'ИИ не успел создать игру за отведённое время. Попробуйте ещё раз.');
+  assert.doesNotMatch(classified.message, /<!DOCTYPE|<html|Gateway/);
+});
+
+// 19. Неожиданный HTML-ответ вместо JSON классифицируется как EMPTY_RESPONSE (502)
+test('19. Неожиданный HTML-ответ (например, ошибка SPA) классифицируется как EMPTY_RESPONSE (502)', () => {
+  const unexpectedHtml = '<!doctype html><html><head><title>App</title></head><body><div id="root"></div></body></html>';
+  const classified = classifyApiError(unexpectedHtml);
+
+  assert.equal(classified.code, 'EMPTY_RESPONSE');
+  assert.equal(classified.httpStatus, 502);
+  assert.equal(classified.retryable, true);
+  assert.equal(classified.message, 'Сервер вернул некорректный ответ вместо данных игры. Попробуйте ещё раз.');
+});
+
+// 20. HTML-ответ в режиме модификации сохраняет уведомление о неизменности версии
+test('20. HTML-ответ в режиме модификации сохраняет суффикс сохранения версии', () => {
+  const htmlError = '<!doctype html><html><body>Error 504 Gateway Timeout</body></html>';
+  const classified = classifyApiError(htmlError, { isModification: true });
+
+  assert.equal(classified.code, 'TIMEOUT');
+  assert.ok(classified.message.includes('Предыдущая версия игры сохранена без изменений.'));
+});
+
+
 

@@ -26,6 +26,20 @@ export const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flas
 export const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.6-flash';
 export const GEMINI_MODEL = GEMINI_PRIMARY_MODEL;
 
+/**
+ * Единый максимальный бюджет времени серверной обработки.
+ *
+ * Архитектурное ограничение среды AI Studio / Cloud Run:
+ * Промежуточный прокси Google Front End (GFE) / Cloud Run Ingress обрывает
+ * неактивные HTTP-соединения через 90 секунд (90000мс) с кодом 504 и HTML-страницей.
+ * Поэтому общий серверный дедлайн установлен в 80 секунд (80000мс):
+ * это гарантирует 10-секундный запас времени для подготовки и отправки
+ * валидного JSON-ответа клиенту ДО того, как прокси разорвёт соединение.
+ */
+export const SERVER_TOTAL_BUDGET_MS = 80000;      // 80 секунд общий дедлайн сервера
+export const PRIMARY_TIMEOUT_MS = 38000;          // 38 секунд на первичную модель (gemini-3.8-flash)
+export const FALLBACK_TIMEOUT_MS = 32000;         // 32 секунды на резервную модель (gemini-3.6-flash)
+export const MIN_REPAIR_TIME_BUDGET_MS = 14000;   // минимум 14 секунд для запуска авто-исправления
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -291,11 +305,10 @@ app.post('/api/generate-game', async (req: Request, res: Response) => {
     fullPrompt += `\nПомни: верни только рабочий self-contained HTML-код без внешних зависимостей.`;
 
     const isAborted = setupAbortDetection(req, res);
-    const totalBudgetDeadline = reqStartTime + 165000;
+    const totalBudgetDeadline = reqStartTime + SERVER_TOTAL_BUDGET_MS;
     let modelUsed = GEMINI_PRIMARY_MODEL;
 
-    // Primary Gemini Call with controlled timeout (45s) and automatic fallback to gemini-3.6-flash
-    const PRIMARY_TIMEOUT_MS = 45000;
+    // Primary Gemini Call with controlled timeout and automatic fallback to gemini-3.6-flash
     const primaryStart = Date.now();
     console.log(`[REQ-${requestId}] [Первичная генерация] Старт вызова Gemini (${GEMINI_PRIMARY_MODEL})...`);
 
@@ -309,6 +322,7 @@ app.post('/api/generate-game', async (req: Request, res: Response) => {
         temperature: 0.7,
       },
       timeoutMs: PRIMARY_TIMEOUT_MS,
+      fallbackTimeoutMs: FALLBACK_TIMEOUT_MS,
       totalBudgetDeadline,
       operationName: 'первичная генерация Gemini',
       requestId,
@@ -366,18 +380,23 @@ app.post('/api/generate-game', async (req: Request, res: Response) => {
       `[REQ-${requestId}] [Проверка проходимости] Статус: ${verif.report.status}, passed=${verif.report.passed}, ошибок: ${verif.report.errors.length}, авто-исправлено: ${verif.wasFixed}`
     );
 
-    // Step 4: If still not passable and has errors, attempt targeted AI repair (1 retry) with fallback
+    // Step 4: If still not passable and has errors, attempt targeted AI repair (1 retry) only if remaining budget allows
     if (!verif.report.passed && verif.report.errors.length > 0) {
-      const elapsed = Date.now() - reqStartTime;
-      const remainingTime = Math.max(15000, 165000 - elapsed);
-      const repairStart = Date.now();
+      const remainingTime = totalBudgetDeadline - Date.now();
+      if (remainingTime < MIN_REPAIR_TIME_BUDGET_MS) {
+        console.warn(
+          `[REQ-${requestId}] [Авто-исправление] Недостаточно времени до общего дедлайна (${remainingTime}мс < ${MIN_REPAIR_TIME_BUDGET_MS}мс). Пропуск AI-исправления для соблюдения бюджета времени.`
+        );
+      } else {
+        const repairTimeout = Math.min(26000, remainingTime - 3000);
+        const repairStart = Date.now();
 
-      console.log(
-        `[REQ-${requestId}] [Авто-исправление] Начало авто-исправления через Gemini... (бюджет времени: ${remainingTime}мс)`
-      );
+        console.log(
+          `[REQ-${requestId}] [Авто-исправление] Начало авто-исправления через Gemini... (бюджет времени: ${repairTimeout}мс)`
+        );
 
-      try {
-        const repairPrompt = `В сгенерированной игре обнаружены критические ошибки проходимости:
+        try {
+          const repairPrompt = `В сгенерированной игре обнаружены критические ошибки проходимости:
 ${verif.report.errors.join('\n')}
 
 Вот текущий код игры:
@@ -393,29 +412,30 @@ ${verif.html}
 5. Обнови window.GAME_LEVEL_DATA и саму отрисовку/коллизии.
 6. Верни ПОЛНЫЙ рабочий HTML-код от <!DOCTYPE html> до </html> без лишних слов.`;
 
-        const repairResult = await generateWithFallback({
-          aiClient: ai,
-          primaryModel: GEMINI_PRIMARY_MODEL,
-          fallbackModel: GEMINI_FALLBACK_MODEL,
-          contents: repairPrompt,
-          config: {
-            systemInstruction: buildSystemInstruction(),
-            temperature: 0.3,
-          },
-          timeoutMs: remainingTime,
-          totalBudgetDeadline,
-          operationName: 'авто-исправление Gemini',
-          requestId,
-          isAborted,
-          onFallbackAttempt: ({ primaryError, fallbackModel, remainingTimeMs }) => {
-            const sanitizedErr = sanitizeErrorMessage(
-              (primaryError as any)?.message || String(primaryError)
-            );
-            console.warn(
-              `[REQ-${requestId}] [Авто-исправление] [Резервная модель] Основная модель не ответила (${sanitizedErr}), переключение на ${fallbackModel} (${remainingTimeMs}мс)...`
-            );
-          },
-        });
+          const repairResult = await generateWithFallback({
+            aiClient: ai,
+            primaryModel: GEMINI_PRIMARY_MODEL,
+            fallbackModel: GEMINI_FALLBACK_MODEL,
+            contents: repairPrompt,
+            config: {
+              systemInstruction: buildSystemInstruction(),
+              temperature: 0.3,
+            },
+            timeoutMs: repairTimeout,
+            fallbackTimeoutMs: Math.min(18000, repairTimeout),
+            totalBudgetDeadline,
+            operationName: 'авто-исправление Gemini',
+            requestId,
+            isAborted,
+            onFallbackAttempt: ({ primaryError, fallbackModel, remainingTimeMs }) => {
+              const sanitizedErr = sanitizeErrorMessage(
+                (primaryError as any)?.message || String(primaryError)
+              );
+              console.warn(
+                `[REQ-${requestId}] [Авто-исправление] [Резервная модель] Основная модель не ответила (${sanitizedErr}), переключение на ${fallbackModel} (${remainingTimeMs}мс)...`
+              );
+            },
+          });
 
         const repairDuration = Date.now() - repairStart;
         const repairedRaw = repairResult.text || '';
@@ -453,6 +473,7 @@ ${verif.html}
         }
       }
     }
+  }
 
     // If after all repair attempts the game still has fatal issues, reject with a friendly error
     if (!verif.report.passed && verif.report.status === 'issue_detected') {
@@ -564,8 +585,7 @@ ${currentHtml}
 8. Верни ПОЛНЫЙ обновлённый HTML-код игры от <!DOCTYPE html> до </html> без каких-либо вводных или заключительных слов.`;
 
     const isAborted = setupAbortDetection(req, res);
-    const totalBudgetDeadline = reqStartTime + 165000;
-    const MODIFY_TIMEOUT_MS = 45000;
+    const totalBudgetDeadline = reqStartTime + SERVER_TOTAL_BUDGET_MS;
     const modifyStart = Date.now();
     console.log(`[REQ-${requestId}] [Модификация] Старт вызова Gemini (${GEMINI_PRIMARY_MODEL})...`);
 
@@ -578,7 +598,8 @@ ${currentHtml}
         systemInstruction: buildSystemInstruction(),
         temperature: 0.5,
       },
-      timeoutMs: MODIFY_TIMEOUT_MS,
+      timeoutMs: PRIMARY_TIMEOUT_MS,
+      fallbackTimeoutMs: FALLBACK_TIMEOUT_MS,
       totalBudgetDeadline,
       operationName: 'модификация игры Gemini',
       requestId,

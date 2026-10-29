@@ -20,6 +20,7 @@ export interface FallbackCallParams {
   contents: string;
   config?: ModelCallOptions;
   timeoutMs: number;
+  fallbackTimeoutMs?: number;
   totalBudgetDeadline?: number;
   operationName: string;
   requestId?: string;
@@ -39,10 +40,10 @@ export interface ModelCallResult {
 
 /**
  * Минимальный остаток времени (в мс), необходимый для попытки вызова резервной модели.
- * Если времени меньше 10 секунд, запуск резервного вызова нецелесообразен,
+ * Если времени меньше 12 секунд, запуск резервного вызова нецелесообразен,
  * так как модель не успеет сгенерировать полный код игры до срабатывания тайм-аута.
  */
-export const MIN_FALLBACK_TIME_BUDGET_MS = 10000;
+export const MIN_FALLBACK_TIME_BUDGET_MS = 12000;
 
 /**
  * Проверяет, подходит ли ошибка под условия переключения на резервную модель.
@@ -138,6 +139,7 @@ export async function generateWithFallback(
     contents,
     config,
     timeoutMs,
+    fallbackTimeoutMs,
     totalBudgetDeadline,
     operationName,
     requestId = 'gen',
@@ -158,7 +160,7 @@ export async function generateWithFallback(
   let primaryTimeout = timeoutMs;
   if (totalBudgetDeadline) {
     const remainingTotal = totalBudgetDeadline - now;
-    if (remainingTotal <= 2000) {
+    if (remainingTotal <= 4000) {
       const timeoutErr: any = new Error(
         `Превышено общее время выполнения операции "${operationName}".`
       );
@@ -167,8 +169,8 @@ export async function generateWithFallback(
       timeoutErr.code = 'TIMEOUT';
       throw timeoutErr;
     }
-    // Оставляем небольшой запас времени для возможных последующих этапов
-    primaryTimeout = Math.min(timeoutMs, remainingTotal - 1000);
+    // Оставляем запас времени для возможных последующих этапов и сериализации ответа
+    primaryTimeout = Math.min(timeoutMs, remainingTotal - 2000);
   }
 
   // 3. Вызов основной модели
@@ -203,16 +205,16 @@ export async function generateWithFallback(
     }
 
     // 6. Проверяем оставшийся бюджет времени
-    let fallbackTimeout = timeoutMs;
+    let fallbackTimeout = fallbackTimeoutMs || timeoutMs;
     if (totalBudgetDeadline) {
       const remainingForFallback = totalBudgetDeadline - Date.now();
       if (remainingForFallback < MIN_FALLBACK_TIME_BUDGET_MS) {
         console.warn(
-          `[REQ-${requestId}] [Резервная модель] Недостаточно времени для резервной попытки (осталось ${remainingForFallback}мс < ${MIN_FALLBACK_TIME_BUDGET_MS}мс). Возврат исходной ошибки.`
+          `[REQ-${requestId}] [Резервная модель] Недостаточно времени до общего дедлайна (осталось ${remainingForFallback}мс < ${MIN_FALLBACK_TIME_BUDGET_MS}мс). Резервный вызов отменен.`
         );
         throw primaryError;
       }
-      fallbackTimeout = Math.min(timeoutMs, remainingForFallback - 1000);
+      fallbackTimeout = Math.min(fallbackTimeout, remainingForFallback - 2000);
     }
 
     // 7. Оповещаем / логируем переключение на резервную модель

@@ -265,9 +265,11 @@ export function classifyApiError(
     };
   }
 
-  // 8. Пустой или некорректный ответ модели или сервера (включая 200 без тела или сбой JSON)
+  // 8. Пустой или некорректный ответ модели или сервера (включая HTML-страницы ошибок от прокси и сбой парсинга JSON)
   if (
     statusOrCode === 200 ||
+    combined.includes('<!doctype') ||
+    combined.includes('<html') ||
     combined.includes('пустой результат') ||
     combined.includes('пустой ответ') ||
     combined.includes('пустой') ||
@@ -280,10 +282,25 @@ export function classifyApiError(
     combined.includes('unexpected end of json') ||
     combined.includes('unexpected token')
   ) {
+    // Если внутри HTML или ошибки есть признаки тайм-аута шлюза/прокси (504 / gateway timeout)
+    if (combined.includes('504') || combined.includes('timeout') || combined.includes('gateway')) {
+      return {
+        code: 'TIMEOUT',
+        httpStatus: 504,
+        message: wrapMessage('ИИ не успел создать игру за отведённое время. Попробуйте ещё раз.'),
+        retryable: true,
+        isModification: isMod,
+      };
+    }
+    const isHtmlResponse = combined.includes('<!doctype') || combined.includes('<html');
     return {
       code: 'EMPTY_RESPONSE',
       httpStatus: 502,
-      message: wrapMessage('ИИ не смог подготовить готовую игру. Попробуйте изменить описание.'),
+      message: wrapMessage(
+        isHtmlResponse
+          ? 'Сервер вернул некорректный ответ вместо данных игры. Попробуйте ещё раз.'
+          : 'ИИ не смог подготовить готовую игру. Попробуйте изменить описание.'
+      ),
       retryable: true,
       isModification: isMod,
     };

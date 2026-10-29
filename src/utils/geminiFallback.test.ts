@@ -321,3 +321,76 @@ test('generateWithFallback: при дефиците оставшегося вр�
   // Резервная модель не была запущена из-за нехватки времени
   assert.deepEqual(calls, ['gemini-3.8-flash']);
 });
+
+test('generateWithFallback: при исчерпанном дедлайне в самом начале (<= 4 сек) вызов сразу прерывается с TimeoutError', async () => {
+  const calls: string[] = [];
+
+  const fakeAi = {
+    models: {
+      generateContent: async ({ model }: { model: string }) => {
+        calls.push(model);
+        return { text: '<html>OK</html>' };
+      },
+    },
+  };
+
+  const exhaustedDeadline = Date.now() + 2000; // Всего 2с до дедлайна
+
+  await assert.rejects(
+    async () => {
+      await generateWithFallback({
+        aiClient: fakeAi,
+        primaryModel: 'gemini-3.8-flash',
+        fallbackModel: 'gemini-3.6-flash',
+        contents: 'Создай игру',
+        timeoutMs: 38000,
+        totalBudgetDeadline: exhaustedDeadline,
+        operationName: 'тест исчерпанного бюджета',
+      });
+    },
+    (err: any) => {
+      assert.equal(err.name, 'TimeoutError');
+      assert.equal(err.status, 504);
+      assert.match(err.message, /Превышено общее время/);
+      return true;
+    }
+  );
+
+  assert.equal(calls.length, 0, 'Модель не должна вызываться, если времени до дедлайна не осталось');
+});
+
+test('generateWithFallback: параметр fallbackTimeoutMs корректно ограничивает время резервного вызова', async () => {
+  let fallbackAllocatedTimeout = 0;
+
+  const fakeAi = {
+    models: {
+      generateContent: async ({ model }: { model: string }) => {
+        if (model === 'gemini-3.8-flash') {
+          const err: any = new Error('503 Service Unavailable');
+          err.status = 503;
+          throw err;
+        }
+        return { text: '<html>Fallback Success</html>' };
+      },
+    },
+  };
+
+  const totalDeadline = Date.now() + 60000;
+
+  await generateWithFallback({
+    aiClient: fakeAi,
+    primaryModel: 'gemini-3.8-flash',
+    fallbackModel: 'gemini-3.6-flash',
+    contents: 'Создай игру',
+    timeoutMs: 38000,
+    fallbackTimeoutMs: 32000,
+    totalBudgetDeadline: totalDeadline,
+    operationName: 'проверка fallbackTimeoutMs',
+    onFallbackAttempt: ({ remainingTimeMs }) => {
+      fallbackAllocatedTimeout = remainingTimeMs;
+    },
+  });
+
+  assert.equal(fallbackAllocatedTimeout, 32000, 'Резервной модели должен быть передан заданный лимит 32с');
+});
+
