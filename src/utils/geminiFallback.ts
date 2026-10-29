@@ -16,7 +16,7 @@ export interface FallbackCallParams {
     };
   };
   primaryModel: string;
-  fallbackModel: string;
+  fallbackModel?: string;
   contents: string;
   config?: ModelCallOptions;
   timeoutMs: number;
@@ -197,7 +197,11 @@ export async function generateWithFallback(
       throw primaryError;
     }
 
-    // 5. Проверяем, подходит ли ошибка под условия переключения
+    // 5. Проверяем, настроена ли резервная модель и подходит ли ошибка под условия переключения
+    if (!fallbackModel || fallbackModel === primaryModel) {
+      throw primaryError;
+    }
+
     const canFallback = isEligibleForFallback(primaryError, abortedNow);
     if (!canFallback) {
       // Ошибки 400, 401, 403, 422, 429 сразу выбрасываются без резервной попытки

@@ -199,10 +199,16 @@ export default function App() {
 
       if (!response.ok || !data?.success) {
         let errorToClassify: any;
-        if (data?.error) {
+        const msgCandidate = (typeof data?.error === 'string' && data.error.trim())
+          ? data.error.trim()
+          : (typeof data?.message === 'string' && data.message.trim())
+          ? data.message.trim()
+          : null;
+
+        if (msgCandidate) {
           errorToClassify = {
             status: response.status,
-            message: data.error,
+            message: msgCandidate,
             code: data.code,
             retryable: data.retryable,
           };
@@ -235,7 +241,7 @@ export default function App() {
         } else {
           errorToClassify = {
             status: response.status,
-            message: data.message || (response.statusText || 'Не удалось завершить создание игры.'),
+            message: response.statusText || 'Не удалось завершить создание игры.',
             code: data.code,
             retryable: data.retryable ?? true,
           };
@@ -358,10 +364,16 @@ export default function App() {
 
       if (!response.ok || !data?.success) {
         let errorToClassify: any;
-        if (data?.error) {
+        const msgCandidate = (typeof data?.error === 'string' && data.error.trim())
+          ? data.error.trim()
+          : (typeof data?.message === 'string' && data.message.trim())
+          ? data.message.trim()
+          : null;
+
+        if (msgCandidate) {
           errorToClassify = {
             status: response.status,
-            message: data.error,
+            message: msgCandidate,
             code: data.code,
             retryable: data.retryable,
             isModification: true,
@@ -397,7 +409,7 @@ export default function App() {
         } else {
           errorToClassify = {
             status: response.status,
-            message: data.message || (response.statusText || 'Не удалось завершить модификацию игры.'),
+            message: response.statusText || 'Не удалось завершить модификацию игры.',
             code: data.code,
             retryable: data.retryable ?? true,
             isModification: true,

@@ -60,7 +60,8 @@ export function classifyApiError(
     rawError !== null &&
     'code' in rawError &&
     'httpStatus' in rawError &&
-    'message' in rawError
+    'message' in rawError &&
+    Boolean((rawError as any).message && String((rawError as any).message).trim().length > 0)
   ) {
     const existing = rawError as ClassifiedError;
     let msg = existing.message;

@@ -213,7 +213,7 @@ export const Header: React.FC<HeaderProps> = ({
                       <span>Модель ИИ</span>
                     </div>
                     <span className="font-mono text-[11px] font-semibold text-neutral-900 dark:text-neutral-100">
-                      {serverStatus?.model || 'gemini-3.8-flash'}
+                      {serverStatus?.model || 'gemini-3.6-flash'}
                     </span>
                   </div>
 

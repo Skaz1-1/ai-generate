@@ -394,3 +394,37 @@ test('generateWithFallback: параметр fallbackTimeoutMs корректн�
   assert.equal(fallbackAllocatedTimeout, 32000, 'Резервной модели должен быть передан заданный лимит 32с');
 });
 
+test('generateWithFallback: при пустой fallbackModel или отсутствии резервной модели резервный вызов не совершается', async () => {
+  const calls: string[] = [];
+
+  const fakeAi = {
+    models: {
+      generateContent: async ({ model }: { model: string }) => {
+        calls.push(model);
+        const err: any = new Error('503 Service Unavailable');
+        err.status = 503;
+        throw err;
+      },
+    },
+  };
+
+  await assert.rejects(
+    async () => {
+      await generateWithFallback({
+        aiClient: fakeAi,
+        primaryModel: 'gemini-3.6-flash',
+        fallbackModel: '',
+        contents: 'Создай игру',
+        timeoutMs: 52000,
+        operationName: 'одиночный вызов без резерва',
+      });
+    },
+    (err: any) => {
+      assert.equal(err.status, 503);
+      return true;
+    }
+  );
+
+  assert.deepEqual(calls, ['gemini-3.6-flash'], 'Должен быть совершен ровно 1 вызов модели gemini-3.6-flash');
+});
+

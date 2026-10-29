@@ -21,25 +21,24 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Centralized model configuration - primary and fallback models
-export const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-export const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.6-flash';
+// Centralized model configuration - single model: gemini-3.6-flash
+export const GEMINI_PRIMARY_MODEL = 'gemini-3.6-flash';
+export const GEMINI_FALLBACK_MODEL = ''; // Отключено: только одна модель без каскадного ожидания
 export const GEMINI_MODEL = GEMINI_PRIMARY_MODEL;
 
 /**
- * Единый максимальный бюджет времени серверной обработки.
- *
- * Архитектурное ограничение среды AI Studio / Cloud Run:
- * Промежуточный прокси Google Front End (GFE) / Cloud Run Ingress обрывает
- * неактивные HTTP-соединения через 90 секунд (90000мс) с кодом 504 и HTML-страницей.
- * Поэтому общий серверный дедлайн установлен в 80 секунд (80000мс):
- * это гарантирует 10-секундный запас времени для подготовки и отправки
- * валидного JSON-ответа клиенту ДО того, как прокси разорвёт соединение.
+ * Единый бюджет времени серверной обработки:
+ * - Общий серверный бюджет: ~60 секунд (60000мс).
+ * - Максимальное время вызова модели: до 55 секунд (52000мс).
+ * - Автоматическое переключение между моделями отключено, используется только gemini-3.6-flash.
+ * - Повторная AI-генерация для авто-исправления запускается только при наличии достаточного времени (>=45с);
+ *   если времени заведомо не хватит, авто-исправление пропускается, а безопасность сохраняется через
+ *   детерминированный программный верификатор и отказ при непроходимости.
  */
-export const SERVER_TOTAL_BUDGET_MS = 80000;      // 80 секунд общий дедлайн сервера
-export const PRIMARY_TIMEOUT_MS = 38000;          // 38 секунд на первичную модель (gemini-3.8-flash)
-export const FALLBACK_TIMEOUT_MS = 32000;         // 32 секунды на резервную модель (gemini-3.6-flash)
-export const MIN_REPAIR_TIME_BUDGET_MS = 14000;   // минимум 14 секунд для запуска авто-исправления
+export const SERVER_TOTAL_BUDGET_MS = 60000;      // ~60 секунд общий дедлайн сервера
+export const PRIMARY_TIMEOUT_MS = 52000;          // до 55 секунд на вызов модели gemini-3.6-flash
+export const FALLBACK_TIMEOUT_MS = 0;              // отключено: одна модель без каскадного ожидания
+export const MIN_REPAIR_TIME_BUDGET_MS = 45000;   // минимум 45 секунд для запуска повторного AI-вызова
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
