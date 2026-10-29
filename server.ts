@@ -7,16 +7,25 @@ import { extractHtmlCode, validateGameHtml } from './src/utils/gameValidator.js'
 import { verifyAndFixGame } from './src/utils/solvability/gameVerifier.ts';
 import { adaptUserPrompt } from './src/utils/promptAdapter.ts';
 import { injectRuntimeGuard } from './src/utils/gameRuntimeGuard.ts';
-import { formatFriendlyErrorMessage } from './src/utils/errorMessage.ts';
+import {
+  classifyApiError,
+  formatFriendlyErrorMessage,
+  sanitizeErrorMessage,
+  isApiLevelError,
+} from './src/utils/errorMessage.ts';
 import { deduceAudienceFromPrompt, buildScaleDirective } from './src/utils/gameParameters.ts';
+import { generateWithFallback } from './src/utils/geminiFallback.ts';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Centralized model configuration - uses the cost-effective / free-tier model
-export const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+// Centralized model configuration - primary and fallback models
+export const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+export const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.6-flash';
+export const GEMINI_MODEL = GEMINI_PRIMARY_MODEL;
+
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -38,6 +47,49 @@ function getGenAIClient(): GoogleGenAI {
     },
   });
 }
+
+/**
+ * Выполняет асинхронную операцию с контролируемым тайм-аутом.
+ */
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  operationName: string
+): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const err: any = new Error(`Превышено время ожидания этапа "${operationName}" (${timeoutMs}мс)`);
+      err.name = 'TimeoutError';
+      err.status = 504;
+      err.code = 'TIMEOUT';
+      reject(err);
+    }, timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
+/**
+ * Корректно определяет отмену запроса клиентом.
+ * В Node.js / Express событие req 'close' срабатывает при окончании приёма тела POST-запроса,
+ * поэтому прямая проверка req.destroyed ошибочно считает активный запрос отменённым.
+ * Реальное отключение клиента отслеживается по событию 'close' ответа res до его завершения.
+ */
+function setupAbortDetection(req: Request, res: Response): () => boolean {
+  let clientAborted = false;
+  res.on('close', () => {
+    if (!res.writableFinished && !res.headersSent) {
+      clientAborted = true;
+    }
+  });
+  return () =>
+    clientAborted ||
+    Boolean((req as any).signal?.aborted) ||
+    Boolean(res.destroyed && !res.writableFinished);
+}
+
 
 // System prompt crafting
 function buildSystemInstruction(): string {
@@ -80,17 +132,25 @@ function buildSystemInstruction(): string {
    - Вёрстка адаптивная (meta viewport), игра центрируется, элементы не вылезают за границы экрана.
 5. ИГРОВОЙ ЦИКЛ И НАДЁЖНОСТЬ КНОПОК (ОБЯЗАТЕЛЬНО):
    - Стартовый экран: <div id="start-screen" class="overlay"><button id="start-btn" class="big-btn">ИГРАТЬ</button></div>
+   - Экран перехода на следующий этап (для многоэтапных игр):
+     <div id="next-screen" class="overlay hidden"><button id="next-btn" class="big-btn">СЛЕДУЮЩИЙ ЭТАП</button></div>
    - Экран победы/поражения: <div id="win-screen" class="overlay hidden"><button id="restart-btn" class="big-btn">ИГРАТЬ СНОВА</button></div>
+   - СТАНДАРТ АКТИВАЦИИ КНОПОК ИНТЕРФЕЙСА (ЕДИНЫЙ 'click'):
+     * Для всех кнопок интерфейса (#start-btn, #next-btn, #restart-btn) используй ТОЛЬКО одно событие: 'click'!
+     * КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО вешать одновременно 'touchend' и 'click' на одну кнопку: на мобильных устройствах касание пальцем автоматически генерирует событие 'click', а одновременные слушатели приводят к двойному срабатыванию (например, пропуску этапа 2 сразу на этап 3)!
+     * Для мгновенного отклика на тач-экранах без задержки задай кнопкам CSS-стиль: touch-action: manipulation;
    - Обработчики кнопок ОБЯЗАТЕЛЬНО привязывай с проверкой существования:
      const startBtn = document.getElementById('start-btn');
      if (startBtn) {
        startBtn.addEventListener('click', () => { startGame(); });
-       startBtn.addEventListener('touchend', (e) => { e.preventDefault(); startGame(); });
      }
      const restartBtn = document.getElementById('restart-btn');
      if (restartBtn) {
-       restartBtn.addEventListener('click', () => { startGame(); });
-       restartBtn.addEventListener('touchend', (e) => { e.preventDefault(); startGame(); });
+       restartBtn.addEventListener('click', () => { restartGame(); });
+     }
+     const nextBtn = document.getElementById('next-btn');
+     if (nextBtn) {
+       nextBtn.addEventListener('click', () => { advanceStage(); });
      }
    - Никаких ID-ошибок, кнопка должна гарантированно скрывать стартовый экран и запускать игру!
 6. ТРЕБОВАНИЯ ДЛЯ 3D И СЛОЖНОЙ ГРАФИКИ:
@@ -119,7 +179,45 @@ function buildSystemInstruction(): string {
      * Средняя ("medium", по умолчанию): полноценная игра из нескольких этапов (2-3 последовательных уровня / волны / фазы с экраном перехода на следующий этап: "Уровень 1/3 пройден! Нажмите Далее", затем финальная победа).
      * Большая ("large"): продолжительное прохождение (4+ уровней, этапов или волн, с усложнением карты, новыми видами препятствий или мини-боссом).
 
-9. ВЫВОД:
+9. НАДЁЖНОСТЬ МНОГОЭТАПНЫХ ИГР И ПЕРЕХОД МЕЖДУ ЭТАПАМИ (ОБЯЗАТЕЛЬНО):
+   Если игра имеет несколько этапов (масштаб "medium", "large" или по запросу пользователя):
+   - Единый и прозрачный механизм перехода:
+     * Храни массив уровней (например: const LEVELS = [...];) и индекс текущего этапа (let currentLevel = 0;).
+     * Создай единую функцию загрузки этапа loadLevel(levelIndex) / initStage(stageIndex).
+   - Завершение этапа и запуск следующего:
+     * При выполнении условия победы текущего этапа (собраны предметы, пройден лабиринт, завершена волна):
+       1) ОБЯЗАТЕЛЬНО заблокируй повторное срабатывание перехода: используй флаг (например: if (isTransitioning) return; isTransitioning = true;).
+       2) Останови игровой цикл текущего этапа: if (animId) cancelAnimationFrame(animId);
+       3) Покажи экран перехода с кнопкой:
+          <div id="next-screen" class="overlay hidden">
+            <h2 id="next-title">Уровень 1 пройден!</h2>
+            <button id="next-btn" class="big-btn">СЛЕДУЮЩИЙ ЭТАП</button>
+          </div>
+       4) При нажатии на #next-btn (ЕДИНЫЙ слушатель 'click') скрой #next-screen, сбрось флаг перехода (isTransitioning = false) и запусти следующий этап: loadLevel(currentLevel + 1).
+   - Сброс состояния между этапами (КРИТИЧЕСКИ ВАЖНО):
+     * При запуске следующего этапа внутри loadLevel(idx) ОБЯЗАТЕЛЬНО:
+       1) Сбрось координаты игрока на стартовую позицию нового уровня (не оставляй персонажа на месте выхода прошлого уровня!).
+       2) Полностью пересоздай или очисти списки врагов, пуль и препятствий для нового уровня.
+       3) Создай заново предметы/бонусы для нового уровня и сбрось флаги сбора.
+       4) Сбрось таймеры уровня или промежуточный счётчик текущего этапа.
+       5) НЕ вешай слушатели событий (keydown, touchstart) заново внутри loadLevel! Все слушатели вешаются ЕДИНОЖДЫ при первом старте игры.
+   - Финал и победа (защита от выхода за границы):
+     * Перед переходом к следующему уровню ВСЕГДА проверяй:
+       if (currentLevel >= LEVELS.length - 1) { showWinScreen(); return; }
+     * Последний этап ОБЯЗАН завершаться экраном победы (#win-screen), а НЕ попыткой загрузить несуществующий уровень!
+   - Перезапуск игры (#restart-btn):
+     * Кнопка "Играть снова" (#restart-btn) ОБЯЗАНА чисто сбрасывать:
+       1) Индекс этапа: currentLevel = 0;
+       2) Флаг перехода: isTransitioning = false;
+       3) Очки, жизни и параметры игрока;
+       4) Остановить текущий цикл анимации: if (animId) cancelAnimationFrame(animId);
+       5) Очистить активные интервалы/таймеры уровня (clearInterval / clearTimeout);
+       6) Скрыть все оверлеи: #win-screen, #lose-screen, #next-screen;
+       7) Запустить первый уровень заново: loadLevel(0);
+   - Сохранение при модификациях:
+     * При изменении существующей игры переходы между этапами ОБЯЗАНЫ сохраняться в полном объеме.
+
+10. ВЫВОД:
    - Возвращай ТОЛЬКО чистый код HTML-документа, начинающийся с <!DOCTYPE html> и заканчивающийся </html>.
    - Никаких вступительных или заключительных слов.`;
 }
@@ -128,25 +226,35 @@ function buildSystemInstruction(): string {
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
-    model: GEMINI_MODEL,
+    model: GEMINI_PRIMARY_MODEL,
+    fallbackModel: GEMINI_FALLBACK_MODEL,
     hasApiKey: Boolean(process.env.GEMINI_API_KEY),
   });
 });
 
 // Route: Generate Game
 app.post('/api/generate-game', async (req: Request, res: Response) => {
+  const reqStartTime = Date.now();
+  const requestId = Math.random().toString(36).substring(2, 8);
+
   try {
     const { prompt, difficulty, scale } = req.body;
 
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
       return res.status(400).json({
-        error: 'Пожалуйста, введите текстовое описание игры.',
+        success: false,
+        code: 'INVALID_REQUEST',
+        error: 'Не удалось обработать описание игры. Попробуйте сформулировать его проще.',
+        retryable: false,
       });
     }
 
     if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({
-        error: 'Ключ GEMINI_API_KEY не найден на сервере. Пожалуйста, укажите его в настройках Secrets.',
+      return res.status(401).json({
+        success: false,
+        code: 'AUTH_ERROR',
+        error: 'Сервис ИИ недоступен из-за проблемы с настройкой доступа. Обратитесь к разработчику.',
+        retryable: false,
       });
     }
 
@@ -157,6 +265,10 @@ app.post('/api/generate-game', async (req: Request, res: Response) => {
     const audienceDeduction = deduceAudienceFromPrompt(prompt);
     const gameScale = scale || 'medium';
     const diff = difficulty || 'Средняя';
+
+    console.log(
+      `[REQ-${requestId}] [Генерация] Старт запроса (сложность: ${diff}, масштаб: ${gameScale}, длина описания: ${prompt.trim().length} симв.)`
+    );
 
     let fullPrompt = `Создай полноценную самостоятельную HTML5-мини-игру по следующему описанию:\n"${adaptation.adaptedPrompt}".\n`;
 
@@ -178,29 +290,70 @@ app.post('/api/generate-game', async (req: Request, res: Response) => {
 
     fullPrompt += `\nПомни: верни только рабочий self-contained HTML-код без внешних зависимостей.`;
 
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
+    const isAborted = setupAbortDetection(req, res);
+    const totalBudgetDeadline = reqStartTime + 165000;
+    let modelUsed = GEMINI_PRIMARY_MODEL;
+
+    // Primary Gemini Call with controlled timeout (45s) and automatic fallback to gemini-3.6-flash
+    const PRIMARY_TIMEOUT_MS = 45000;
+    const primaryStart = Date.now();
+    console.log(`[REQ-${requestId}] [Первичная генерация] Старт вызова Gemini (${GEMINI_PRIMARY_MODEL})...`);
+
+    const genResult = await generateWithFallback({
+      aiClient: ai,
+      primaryModel: GEMINI_PRIMARY_MODEL,
+      fallbackModel: GEMINI_FALLBACK_MODEL,
       contents: fullPrompt,
       config: {
         systemInstruction: buildSystemInstruction(),
         temperature: 0.7,
       },
+      timeoutMs: PRIMARY_TIMEOUT_MS,
+      totalBudgetDeadline,
+      operationName: 'первичная генерация Gemini',
+      requestId,
+      isAborted,
+      onFallbackAttempt: ({ primaryError, fallbackModel, remainingTimeMs }) => {
+        const sanitizedErr = sanitizeErrorMessage(
+          (primaryError as any)?.message || String(primaryError)
+        );
+        console.warn(
+          `[REQ-${requestId}] [Резервная модель] Основная модель (${GEMINI_PRIMARY_MODEL}) завершилась ошибкой: ${sanitizedErr}. Переключение на резервную модель ${fallbackModel} (бюджет времени: ${remainingTimeMs}мс)...`
+        );
+      },
     });
 
-    const rawText = response.text || '';
+    modelUsed = genResult.modelUsed;
+    const primaryDuration = Date.now() - primaryStart;
+    console.log(
+      `[REQ-${requestId}] [Первичная генерация] Завершена за ${primaryDuration}мс с моделью ${modelUsed} (usedFallback=${genResult.usedFallback}).`
+    );
+
+    const rawText = genResult.text || '';
     let cleanHtml = extractHtmlCode(rawText);
 
     if (!cleanHtml) {
+      console.warn(`[REQ-${requestId}] [Валидация HTML] Ответ модели не содержит HTML-разметки.`);
       return res.status(502).json({
-        error: 'Модель вернула пустой результат или некорректный ответ. Попробуйте еще раз с чуть более подробным описанием.',
+        success: false,
+        code: 'EMPTY_RESPONSE',
+        error: 'ИИ не смог подготовить готовую игру. Попробуйте изменить описание.',
+        retryable: true,
       });
     }
 
     const validation = validateGameHtml(cleanHtml);
+    console.log(
+      `[REQ-${requestId}] [Валидация HTML] Результат: isValid=${validation.isValid}, предупреждений: ${validation.warnings.length}`
+    );
+
     if (!validation.isValid) {
+      console.warn(`[REQ-${requestId}] [Валидация HTML] Не прошла проверку автономности или синтаксиса.`);
       return res.status(422).json({
-        error: `Сгенерированный код не прошел проверку безопасности или автономности: ${validation.error}`,
-        raw: cleanHtml.slice(0, 500),
+        success: false,
+        code: 'VALIDATION_FAILED',
+        error: 'Не удалось подготовить рабочую игру по этому запросу. Попробуйте упростить описание.',
+        retryable: true,
       });
     }
 
@@ -209,9 +362,20 @@ app.post('/api/generate-game', async (req: Request, res: Response) => {
 
     // Step 3: Solvability Verification & Programmatic Auto-Fix
     let verif = verifyAndFixGame(cleanHtml);
+    console.log(
+      `[REQ-${requestId}] [Проверка проходимости] Статус: ${verif.report.status}, passed=${verif.report.passed}, ошибок: ${verif.report.errors.length}, авто-исправлено: ${verif.wasFixed}`
+    );
 
-    // Step 4: If still not passable and has errors, attempt targeted AI repair (1 retry)
+    // Step 4: If still not passable and has errors, attempt targeted AI repair (1 retry) with fallback
     if (!verif.report.passed && verif.report.errors.length > 0) {
+      const elapsed = Date.now() - reqStartTime;
+      const remainingTime = Math.max(15000, 165000 - elapsed);
+      const repairStart = Date.now();
+
+      console.log(
+        `[REQ-${requestId}] [Авто-исправление] Начало авто-исправления через Gemini... (бюджет времени: ${remainingTime}мс)`
+      );
+
       try {
         const repairPrompt = `В сгенерированной игре обнаружены критические ошибки проходимости:
 ${verif.report.errors.join('\n')}
@@ -225,42 +389,89 @@ ${verif.html}
 1. Обеспечь 100% проходимость: свободный путь от старта к финишу и доступность всех обязательных предметов.
 2. Устрани перекрывающие стены и ловушки.
 3. В платформерах сделай все платформы доступными для прыжка персонажа.
-4. Обнови window.GAME_LEVEL_DATA и саму отрисовку/коллизии.
-5. Верни ПОЛНЫЙ рабочий HTML-код от <!DOCTYPE html> до </html> без лишних слов.`;
+4. Если в игре есть несколько этапов: обеспечь корректный сброс состояния, переход на следующий этап и финальный экран победы на последнем этапе.
+5. Обнови window.GAME_LEVEL_DATA и саму отрисовку/коллизии.
+6. Верни ПОЛНЫЙ рабочий HTML-код от <!DOCTYPE html> до </html> без лишних слов.`;
 
-        const repairResponse = await ai.models.generateContent({
-          model: GEMINI_MODEL,
+        const repairResult = await generateWithFallback({
+          aiClient: ai,
+          primaryModel: GEMINI_PRIMARY_MODEL,
+          fallbackModel: GEMINI_FALLBACK_MODEL,
           contents: repairPrompt,
           config: {
             systemInstruction: buildSystemInstruction(),
             temperature: 0.3,
           },
+          timeoutMs: remainingTime,
+          totalBudgetDeadline,
+          operationName: 'авто-исправление Gemini',
+          requestId,
+          isAborted,
+          onFallbackAttempt: ({ primaryError, fallbackModel, remainingTimeMs }) => {
+            const sanitizedErr = sanitizeErrorMessage(
+              (primaryError as any)?.message || String(primaryError)
+            );
+            console.warn(
+              `[REQ-${requestId}] [Авто-исправление] [Резервная модель] Основная модель не ответила (${sanitizedErr}), переключение на ${fallbackModel} (${remainingTimeMs}мс)...`
+            );
+          },
         });
 
-        const repairedHtml = extractHtmlCode(repairResponse.text || '');
+        const repairDuration = Date.now() - repairStart;
+        const repairedRaw = repairResult.text || '';
+        const repairedHtml = extractHtmlCode(repairedRaw);
+
+        console.log(
+          `[REQ-${requestId}] [Авто-исправление] Ответ получен за ${repairDuration}мс (модель: ${repairResult.modelUsed}). Извлечен HTML: ${Boolean(repairedHtml)}`
+        );
+
         if (repairedHtml && validateGameHtml(repairedHtml).isValid) {
           const guardedRepaired = injectRuntimeGuard(repairedHtml);
           const repairedVerif = verifyAndFixGame(guardedRepaired);
+          console.log(
+            `[REQ-${requestId}] [Авто-исправление] Результат верификации: passed=${repairedVerif.report.passed}, wasFixed=${repairedVerif.wasFixed}`
+          );
           if (repairedVerif.report.passed || repairedVerif.wasFixed) {
             verif = repairedVerif;
+            modelUsed = repairResult.modelUsed;
           }
+        } else {
+          console.warn(`[REQ-${requestId}] [Авто-исправление] Ответ Gemini не прошел валидацию структуры.`);
         }
-      } catch (e) {
-        console.warn('Попытка автоматического исправления через ИИ не удалась:', e);
+      } catch (repairErr: any) {
+        const repairDuration = Date.now() - repairStart;
+        const sanitizedErr = sanitizeErrorMessage(repairErr?.message || String(repairErr));
+        console.error(
+          `[REQ-${requestId}] [Авто-исправление] Сбой вызова Gemini (${repairDuration}мс):`,
+          sanitizedErr
+        );
+
+        // КРИТИЧЕСКИ ВАЖНО: Если сбой в самом API Gemini (503, 429, timeout, network, auth, quota),
+        // НЕ маскируем его под ошибку валидации игрового процесса! Выбрасываем для прямой отправки клиенту:
+        if (isApiLevelError(repairErr)) {
+          throw repairErr;
+        }
       }
     }
 
     // If after all repair attempts the game still has fatal issues, reject with a friendly error
     if (!verif.report.passed && verif.report.status === 'issue_detected') {
-      console.warn('Игра не прошла проверку проходимости после всех попыток:', verif.report.errors);
+      console.warn(`[REQ-${requestId}] [Проверка проходимости] Игра не прошла проверку после всех попыток:`, verif.report.errors);
       return res.status(422).json({
         success: false,
-        error: 'Не удалось создать игру. Попробуйте ещё раз.',
+        code: 'VALIDATION_FAILED',
+        error: 'Не удалось подготовить рабочую игру по этому запросу. Попробуйте упростить описание.',
+        retryable: true,
       });
     }
 
     // Ensure final HTML has the runtime guard
     const finalHtml = injectRuntimeGuard(verif.html);
+    const totalDuration = Date.now() - reqStartTime;
+
+    console.log(
+      `[REQ-${requestId}] [Генерация] Запрос успешно завершен за ${totalDuration}мс (wasFixed=${verif.wasFixed}, модель: ${modelUsed}).`
+    );
 
     return res.json({
       success: true,
@@ -270,37 +481,54 @@ ${verif.html}
       fixSummary: verif.fixSummary,
       adaptationNotice: adaptation.adaptationNotice,
       warnings: [...validation.warnings, ...verif.report.warnings],
-      modelUsed: GEMINI_MODEL,
+      modelUsed,
     });
   } catch (error: any) {
-    console.error('Ошибка при генерации игры (технический лог):', error);
-    const friendlyMessage = formatFriendlyErrorMessage(error);
-    return res.status(500).json({
-      error: friendlyMessage,
+    const totalDuration = Date.now() - reqStartTime;
+    const sanitizedLog = sanitizeErrorMessage(error?.stack || error?.message || String(error));
+    console.error(`[REQ-${requestId}] [Ошибка генерации] Сбой за ${totalDuration}мс:`, sanitizedLog);
+    const classified = classifyApiError(error);
+    return res.status(classified.httpStatus).json({
+      success: false,
+      code: classified.code,
+      error: classified.message,
+      retryable: classified.retryable,
     });
   }
 });
 
 // Route: Modify Game
 app.post('/api/modify-game', async (req: Request, res: Response) => {
+  const reqStartTime = Date.now();
+  const requestId = Math.random().toString(36).substring(2, 8);
+
   try {
     const { currentHtml, modificationPrompt, scale } = req.body;
 
     if (!currentHtml || typeof currentHtml !== 'string') {
       return res.status(400).json({
-        error: 'Отсутствует исходный код игры для модификации.',
+        success: false,
+        code: 'INVALID_REQUEST',
+        error: 'Не удалось обработать описание игры. Попробуйте сформулировать его проще. Предыдущая версия игры сохранена без изменений.',
+        retryable: false,
       });
     }
 
     if (!modificationPrompt || typeof modificationPrompt !== 'string' || modificationPrompt.trim().length === 0) {
       return res.status(400).json({
-        error: 'Пожалуйста, опишите, какие изменения нужно внести в игру.',
+        success: false,
+        code: 'INVALID_REQUEST',
+        error: 'Пожалуйста, опишите, какие изменения нужно внести в игру. Предыдущая версия игры сохранена без изменений.',
+        retryable: false,
       });
     }
 
     if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({
-        error: 'Ключ GEMINI_API_KEY не найден на сервере. Пожалуйста, укажите его в настройках Secrets.',
+      return res.status(401).json({
+        success: false,
+        code: 'AUTH_ERROR',
+        error: 'Сервис ИИ недоступен из-за проблемы с настройкой доступа. Обратитесь к разработчику. Предыдущая версия игры сохранена без изменений.',
+        retryable: false,
       });
     }
 
@@ -313,6 +541,10 @@ app.post('/api/modify-game', async (req: Request, res: Response) => {
         ? 'много уровней/этапов'
         : 'несколько этапов';
 
+    console.log(
+      `[REQ-${requestId}] [Модификация] Старт запроса (длина промпта: ${modificationPrompt.trim().length} симв., масштаб: ${scaleDesc})`
+    );
+
     const modifyPrompt = `Перед тобой текущий рабочий HTML5-код мини-игры:
 \`\`\`html
 ${currentHtml}
@@ -324,35 +556,73 @@ ${currentHtml}
 ИНСТРУКЦИИ ДЛЯ ДОРАБОТКИ:
 1. Сохрани все уже работающие механики, Canvas-графику, управление и структуру игры.
 2. Аккуратно примени запрошенные изменения (например: изменить скорость, цвета, размеры кнопок или элементов, добавить бонусы, скорректировать правила).
-3. Масштаб игры: сохраняй текущий масштаб игры (${scaleDesc}), если пользователь явно не попросил добавить/сократить этапы.
+3. Масштаб и этапы игры: сохраняй текущий масштаб (${scaleDesc}). Если в игре несколько этапов, КАТЕГОРИЧЕСКИ СОХРАНЯЙ массив уровней, функции loadLevel/nextLevel, сброс состояния между этапами, экран перехода #next-screen с кнопкой #next-btn и корректный финальный экран победы.
 4. Аудитория и доступность: если в запросе упомянута аудитория (например, "для бабушки", "для детей", "для профи"), адаптируй размеры кнопок, читаемость шрифтов или динамику.
 5. Убедись, что после изменений уровень ОСТАЁТСЯ 100% проходимым (финиш и предметы достижимы).
 6. Обнови window.GAME_LEVEL_DATA синхронно с кодом.
 7. Игра по-прежнему должна оставаться на 100% автономной, без внешних CDN и сетевых вызовов.
 8. Верни ПОЛНЫЙ обновлённый HTML-код игры от <!DOCTYPE html> до </html> без каких-либо вводных или заключительных слов.`;
 
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
+    const isAborted = setupAbortDetection(req, res);
+    const totalBudgetDeadline = reqStartTime + 165000;
+    const MODIFY_TIMEOUT_MS = 45000;
+    const modifyStart = Date.now();
+    console.log(`[REQ-${requestId}] [Модификация] Старт вызова Gemini (${GEMINI_PRIMARY_MODEL})...`);
+
+    const modResult = await generateWithFallback({
+      aiClient: ai,
+      primaryModel: GEMINI_PRIMARY_MODEL,
+      fallbackModel: GEMINI_FALLBACK_MODEL,
       contents: modifyPrompt,
       config: {
         systemInstruction: buildSystemInstruction(),
         temperature: 0.5,
       },
+      timeoutMs: MODIFY_TIMEOUT_MS,
+      totalBudgetDeadline,
+      operationName: 'модификация игры Gemini',
+      requestId,
+      isAborted,
+      onFallbackAttempt: ({ primaryError, fallbackModel, remainingTimeMs }) => {
+        const sanitizedErr = sanitizeErrorMessage(
+          (primaryError as any)?.message || String(primaryError)
+        );
+        console.warn(
+          `[REQ-${requestId}] [Модификация] [Резервная модель] Основная модель не ответила (${sanitizedErr}), переключение на ${fallbackModel} (${remainingTimeMs}мс)...`
+        );
+      },
     });
 
-    const rawText = response.text || '';
+    const modifyDuration = Date.now() - modifyStart;
+    console.log(
+      `[REQ-${requestId}] [Модификация] Вызов завершен за ${modifyDuration}мс (модель: ${modResult.modelUsed}, usedFallback=${modResult.usedFallback}).`
+    );
+
+    const rawText = modResult.text || '';
     const cleanHtml = extractHtmlCode(rawText);
 
     if (!cleanHtml) {
+      console.warn(`[REQ-${requestId}] [Модификация] Модель не вернула валидного HTML кода.`);
       return res.status(502).json({
-        error: 'Модель не смогла вернуть обновленный HTML-код. Предыдущая версия игры сохранена без изменений.',
+        success: false,
+        code: 'EMPTY_RESPONSE',
+        error: 'ИИ не смог подготовить готовую игру. Попробуйте изменить описание. Предыдущая версия игры сохранена без изменений.',
+        retryable: true,
       });
     }
 
     const validation = validateGameHtml(cleanHtml);
+    console.log(
+      `[REQ-${requestId}] [Модификация] Валидация HTML: isValid=${validation.isValid}, warnings=${validation.warnings.length}`
+    );
+
     if (!validation.isValid) {
+      console.warn(`[REQ-${requestId}] [Модификация] Код игры не прошел валидацию.`);
       return res.status(422).json({
-        error: `Обновленный код не прошел валидацию (${validation.error}). Предыдущая рабочая версия сохранена.`,
+        success: false,
+        code: 'VALIDATION_FAILED',
+        error: 'Не удалось подготовить рабочую игру по этому запросу. Попробуйте упростить описание. Предыдущая версия игры сохранена без изменений.',
+        retryable: true,
       });
     }
 
@@ -360,16 +630,27 @@ ${currentHtml}
     const guardedHtml = injectRuntimeGuard(cleanHtml);
     const verif = verifyAndFixGame(guardedHtml);
 
+    console.log(
+      `[REQ-${requestId}] [Модификация] Проверка проходимости: passed=${verif.report.passed}, status=${verif.report.status}, wasFixed=${verif.wasFixed}`
+    );
+
     // If modified game has detected issues that cannot be resolved, reject change cleanly
     if (!verif.report.passed && verif.report.status === 'issue_detected') {
-      console.warn('Модифицированная игра не прошла проверку проходимости:', verif.report.errors);
+      console.warn(`[REQ-${requestId}] [Модификация] Игра не прошла проверку проходимости:`, verif.report.errors);
       return res.status(422).json({
         success: false,
-        error: 'Не удалось создать игру. Попробуйте ещё раз. Предыдущая версия игры сохранена без изменений.',
+        code: 'VALIDATION_FAILED',
+        error: 'Не удалось подготовить рабочую игру по этому запросу. Попробуйте упростить описание. Предыдущая версия игры сохранена без изменений.',
+        retryable: true,
       });
     }
 
     const finalHtml = injectRuntimeGuard(verif.html);
+    const totalDuration = Date.now() - reqStartTime;
+
+    console.log(
+      `[REQ-${requestId}] [Модификация] Запрос успешно выполнен за ${totalDuration}мс (wasFixed=${verif.wasFixed}, модель: ${modResult.modelUsed}).`
+    );
 
     return res.json({
       success: true,
@@ -378,13 +659,18 @@ ${currentHtml}
       wasFixed: verif.wasFixed,
       fixSummary: verif.fixSummary,
       warnings: [...validation.warnings, ...verif.report.warnings],
-      modelUsed: GEMINI_MODEL,
+      modelUsed: modResult.modelUsed,
     });
   } catch (error: any) {
-    console.error('Ошибка при модификации игры (технический лог):', error);
-    const friendlyMessage = formatFriendlyErrorMessage(error);
-    return res.status(500).json({
-      error: `${friendlyMessage} Предыдущая версия игры сохранена без изменений.`,
+    const totalDuration = Date.now() - reqStartTime;
+    const sanitizedLog = sanitizeErrorMessage(error?.stack || error?.message || String(error));
+    console.error(`[REQ-${requestId}] [Ошибка модификации] Сбой за ${totalDuration}мс:`, sanitizedLog);
+    const classified = classifyApiError(error, { isModification: true });
+    return res.status(classified.httpStatus).json({
+      success: false,
+      code: classified.code,
+      error: classified.message,
+      retryable: classified.retryable,
     });
   }
 });
@@ -438,7 +724,7 @@ async function startServer() {
     console.log(`  ➜  Local:   http://localhost:${port}/`);
     console.log(`  ➜  Network: http://${host}:${port}/`);
     console.log(`  ➜  API:     http://localhost:${port}/api/health`);
-    console.log(`  [AI] Модель Gemini: ${GEMINI_MODEL} [${isProduction ? 'PROD' : 'DEV'}]\n`);
+    console.log(`  [AI] Модель Gemini: ${GEMINI_PRIMARY_MODEL} (резервная: ${GEMINI_FALLBACK_MODEL}) [${isProduction ? 'PROD' : 'DEV'}]\n`);
   });
 }
 

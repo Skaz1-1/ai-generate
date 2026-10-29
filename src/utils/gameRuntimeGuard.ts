@@ -9,15 +9,17 @@
 export const RUNTIME_GUARD_SCRIPT = `
 <!-- AI-Games Runtime Guard & Safety Layer -->
 <style id="aigames-guard-styles">
-  /* Ensure start and restart buttons are always topmost and clickable */
+  /* Ensure start, restart and next stage buttons are always topmost, clickable and responsive on touch */
   #start-btn, #btn-start, #play-btn, #btn-play, .big-btn, .btn-main, button.btn-play,
-  #restart-btn, #btn-restart, .restart-btn {
+  #restart-btn, #btn-restart, .restart-btn,
+  #next-btn, #btn-next, #next-level-btn, #btn-next-level, .next-btn, .btn-next {
     pointer-events: auto !important;
     cursor: pointer !important;
     z-index: 99999 !important;
     position: relative;
+    touch-action: manipulation !important;
   }
-  .overlay, #start-screen, #win-screen, #lose-screen, .screen-overlay {
+  .overlay, #start-screen, #win-screen, #lose-screen, #next-screen, #stage-screen, #level-screen, .screen-overlay, .transition-screen {
     pointer-events: auto !important;
   }
   #aigames-error-boundary {
@@ -136,55 +138,11 @@ export const RUNTIME_GUARD_SCRIPT = `
     }
   });
 
-  // 4. Universal Start/Restart Button Auto-Binder Fallback
-  // Guarantees that even if the AI script had an ID typo or failed to attach onclick,
-  // clicking "ИГРАТЬ" / "Запустить" will hide the start screen and launch the game.
-  function setupButtonFallbacks() {
-    var startButtons = document.querySelectorAll(
-      '#start-btn, #btn-start, #play-btn, #btn-play, #start, button.btn-play, .big-btn, .btn-main, button'
-    );
-
-    startButtons.forEach(function(btn) {
-      var text = (btn.textContent || '').trim().toLowerCase();
-      var isStartBtn = btn.id.match(/(start|play|launch)/i) || text.match(/(играть|старт|запустить|начать|play|start)/i);
-      var isRestartBtn = btn.id.match(/(restart|retry|again)/i) || text.match(/(снова|заново|restart|retry)/i);
-
-      if (isStartBtn && !isRestartBtn) {
-        var triggerStart = function() {
-          // Hide known overlays
-          var overlays = document.querySelectorAll(
-            '#start-screen, .start-screen, .overlay:not(#win-screen):not(#lose-screen), .screen-overlay:not(#win-screen):not(#lose-screen)'
-          );
-          overlays.forEach(function(ov) {
-            ov.classList.add('hidden');
-            ov.style.display = 'none';
-          });
-
-          // Call global start functions if defined
-          if (typeof window.startGame === 'function') {
-            try { window.startGame(); } catch (e) { console.warn(e); }
-          } else if (typeof window.initGame === 'function') {
-            try { window.initGame(); } catch (e) { console.warn(e); }
-          } else if (typeof window.start === 'function') {
-            try { window.start(); } catch (e) { console.warn(e); }
-          }
-        };
-
-        btn.addEventListener('click', triggerStart);
-        btn.addEventListener('touchend', triggerStart);
-      }
-    });
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', setupButtonFallbacks);
-  } else {
-    setupButtonFallbacks();
-  }
-  // Also run after a brief delay for dynamically rendered DOM
-  setTimeout(setupButtonFallbacks, 300);
+  // Game buttons (#start-btn, #next-btn, #restart-btn) are managed exclusively
+  // by game code to prevent double-firing and skipped stages.
 })();
 </script>
+
 `;
 
 /**

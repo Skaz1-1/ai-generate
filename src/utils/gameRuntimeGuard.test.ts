@@ -9,7 +9,10 @@ test('injectRuntimeGuard inserts guard script right after <head>', () => {
   assert.ok(result.includes('aigames-guard-script'));
   assert.ok(result.includes('aigames-guard-styles'));
   assert.ok(result.includes('createMemoryStorage'));
-  assert.ok(result.includes('setupButtonFallbacks'));
+  assert.ok(result.includes('touch-action: manipulation'));
+  // Game buttons are managed exclusively by game code to prevent double transitions
+  assert.ok(!result.includes('setupButtonFallbacks'), 'Runtime Guard should not inject duplicate button fallbacks');
+  assert.ok(!result.includes('aigamesNextBound'), 'Runtime Guard should not intercept next button clicks');
   assert.ok(result.indexOf('aigames-guard-script') < result.indexOf('<title>Game</title>'));
 });
 

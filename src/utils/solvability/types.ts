@@ -67,5 +67,10 @@ export interface SolvabilityReport {
     maxJumpHeight?: number;
     maxJumpDistance?: number;
     unreachablePlatforms?: Rect[];
+    stageTransitions?: {
+      isMultiStage: boolean;
+      passed: boolean;
+      stagesCount?: number;
+    };
   };
 }

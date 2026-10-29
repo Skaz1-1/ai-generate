@@ -7,7 +7,7 @@ import { ModificationSection } from './components/ModificationSection.tsx';
 import { GameVersion, GenerationOptions, GenerationStage } from './types.ts';
 import { STARTER_GAME_HTML } from './utils/starterGame.ts';
 import { AlertCircle, X, CheckCircle2, RotateCcw } from 'lucide-react';
-import { formatFriendlyErrorMessage } from './utils/errorMessage.ts';
+import { classifyApiError, formatFriendlyErrorMessage } from './utils/errorMessage.ts';
 
 function getInitialTheme(): 'light' | 'dark' {
   try {
@@ -28,6 +28,8 @@ function getInitialTheme(): 'light' | 'dark' {
   return 'light';
 }
 
+const CLIENT_TIMEOUT_MS = 180000; // 180 секунд (согласовано с серверным лимитом и авто-исправлением)
+
 export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
   const [prompt, setPrompt] = useState('');
@@ -37,6 +39,8 @@ export default function App() {
   });
 
   const modificationRef = useRef<HTMLDivElement>(null);
+  const activeAbortControllerRef = useRef<AbortController | null>(null);
+  const transitionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     try {
@@ -51,6 +55,20 @@ export default function App() {
       root.classList.remove('dark');
     }
   }, [theme]);
+
+  // Clean up in-flight requests and timers on unmount
+  useEffect(() => {
+    return () => {
+      if (activeAbortControllerRef.current) {
+        activeAbortControllerRef.current.abort();
+        activeAbortControllerRef.current = null;
+      }
+      if (transitionTimerRef.current) {
+        clearTimeout(transitionTimerRef.current);
+        transitionTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
@@ -80,6 +98,7 @@ export default function App() {
   const [stage, setStage] = useState<GenerationStage>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorContext, setErrorContext] = useState<'generate' | 'modify' | null>(null);
   const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
@@ -112,15 +131,39 @@ export default function App() {
     if (!prompt.trim() || isLoading) return;
 
     setErrorMessage(null);
+    setErrorContext('generate');
     setSuccessToast(null);
     setStage('analyzing');
     setStatusMessage('Анализируем идею игры...');
 
+    // Quick client-side network check
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setStage('idle');
+      const err = classifyApiError(new TypeError('Failed to fetch'));
+      setErrorMessage(err.message);
+      setRetryAction(() => () => handleGenerate());
+      return;
+    }
+
+    if (activeAbortControllerRef.current) {
+      activeAbortControllerRef.current.abort();
+    }
+    const abortController = new AbortController();
+    activeAbortControllerRef.current = abortController;
+
+    let timeoutId: NodeJS.Timeout | null = null;
+    let stageTimer: NodeJS.Timeout | null = null;
+
     try {
-      const timer = setTimeout(() => {
+      timeoutId = setTimeout(() => {
+        abortController.abort();
+      }, CLIENT_TIMEOUT_MS);
+
+      stageTimer = setTimeout(() => {
         setStage('coding');
         setStatusMessage('Создаём код игры, правила и управление...');
       }, 1200);
+      transitionTimerRef.current = stageTimer;
 
       const response = await fetch('/api/generate-game', {
         method: 'POST',
@@ -132,14 +175,55 @@ export default function App() {
           difficulty: options.difficulty,
           scale: options.scale,
         }),
+        signal: abortController.signal,
       });
 
-      clearTimeout(timer);
+      if (stageTimer) {
+        clearTimeout(stageTimer);
+        stageTimer = null;
+        transitionTimerRef.current = null;
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
 
-      const data = await response.json();
+      let data: any = null;
+      let rawText = '';
+      try {
+        rawText = await response.text();
+        data = rawText ? JSON.parse(rawText) : null;
+      } catch (parseErr) {
+        console.warn('Не удалось распарсить ответ сервера как JSON:', parseErr, rawText?.slice(0, 100));
+      }
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Ошибка при генерации игры на сервере.');
+      if (!response.ok || !data?.success) {
+        let errorToClassify: any;
+        if (data?.error) {
+          errorToClassify = {
+            status: response.status,
+            message: data.error,
+            code: data.code,
+            retryable: data.retryable,
+          };
+        } else if (!data) {
+          errorToClassify = {
+            status: response.status === 200 ? 502 : response.status,
+            code: 'EMPTY_RESPONSE',
+            message: response.status === 200
+              ? 'Сервер вернул некорректный или пустой ответ. Попробуйте ещё раз.'
+              : (response.statusText || 'Не удалось получить ответ от сервера.'),
+            retryable: true,
+          };
+        } else {
+          errorToClassify = {
+            status: response.status,
+            message: data.message || (response.statusText || 'Не удалось завершить создание игры.'),
+            code: data.code,
+            retryable: data.retryable ?? true,
+          };
+        }
+        throw errorToClassify;
       }
 
       setStage('validating');
@@ -168,9 +252,20 @@ export default function App() {
     } catch (err: any) {
       console.error('Ошибка создания игры:', err);
       setStage('idle');
-      const friendly = formatFriendlyErrorMessage(err);
-      setErrorMessage(friendly);
-      setRetryAction(() => () => handleGenerate());
+      const classified = classifyApiError(err);
+      setErrorMessage(classified.message);
+      if (classified.retryable) {
+        setRetryAction(() => () => handleGenerate());
+      } else {
+        setRetryAction(null);
+      }
+    } finally {
+      if (stageTimer) clearTimeout(stageTimer);
+      if (timeoutId) clearTimeout(timeoutId);
+      transitionTimerRef.current = null;
+      if (activeAbortControllerRef.current === abortController) {
+        activeAbortControllerRef.current = null;
+      }
     }
   };
 
@@ -179,15 +274,38 @@ export default function App() {
     if (!modificationPrompt.trim() || isLoading) return;
 
     setErrorMessage(null);
+    setErrorContext('modify');
     setSuccessToast(null);
     setStage('analyzing');
     setStatusMessage('Вносим изменения в игру...');
 
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setStage('idle');
+      const err = classifyApiError(new TypeError('Failed to fetch'), { isModification: true });
+      setErrorMessage(err.message);
+      setRetryAction(() => () => handleModify(modificationPrompt));
+      return;
+    }
+
+    if (activeAbortControllerRef.current) {
+      activeAbortControllerRef.current.abort();
+    }
+    const abortController = new AbortController();
+    activeAbortControllerRef.current = abortController;
+
+    let timeoutId: NodeJS.Timeout | null = null;
+    let stageTimer: NodeJS.Timeout | null = null;
+
     try {
-      const timer = setTimeout(() => {
+      timeoutId = setTimeout(() => {
+        abortController.abort();
+      }, CLIENT_TIMEOUT_MS);
+
+      stageTimer = setTimeout(() => {
         setStage('coding');
         setStatusMessage('Обновляем код игры с сохранением правил...');
       }, 1200);
+      transitionTimerRef.current = stageTimer;
 
       const response = await fetch('/api/modify-game', {
         method: 'POST',
@@ -199,14 +317,58 @@ export default function App() {
           modificationPrompt: modificationPrompt.trim(),
           scale: currentVersion.scale || options.scale,
         }),
+        signal: abortController.signal,
       });
 
-      clearTimeout(timer);
+      if (stageTimer) {
+        clearTimeout(stageTimer);
+        stageTimer = null;
+        transitionTimerRef.current = null;
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
 
-      const data = await response.json();
+      let data: any = null;
+      let rawText = '';
+      try {
+        rawText = await response.text();
+        data = rawText ? JSON.parse(rawText) : null;
+      } catch (parseErr) {
+        console.warn('Не удалось распарсить ответ сервера как JSON:', parseErr, rawText?.slice(0, 100));
+      }
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Не удалось применить изменения к игре.');
+      if (!response.ok || !data?.success) {
+        let errorToClassify: any;
+        if (data?.error) {
+          errorToClassify = {
+            status: response.status,
+            message: data.error,
+            code: data.code,
+            retryable: data.retryable,
+            isModification: true,
+          };
+        } else if (!data) {
+          errorToClassify = {
+            status: response.status === 200 ? 502 : response.status,
+            code: 'EMPTY_RESPONSE',
+            message: response.status === 200
+              ? 'Сервер вернул некорректный или пустой ответ. Предыдущая версия игры сохранена без изменений.'
+              : (response.statusText || 'Не удалось получить ответ от сервера. Предыдущая версия игры сохранена без изменений.'),
+            retryable: true,
+            isModification: true,
+          };
+        } else {
+          errorToClassify = {
+            status: response.status,
+            message: data.message || (response.statusText || 'Не удалось завершить модификацию игры.'),
+            code: data.code,
+            retryable: data.retryable ?? true,
+            isModification: true,
+          };
+        }
+        throw errorToClassify;
       }
 
       setStage('validating');
@@ -234,9 +396,20 @@ export default function App() {
     } catch (err: any) {
       console.error('Ошибка изменения игры:', err);
       setStage('idle');
-      const friendly = formatFriendlyErrorMessage(err);
-      setErrorMessage(`${friendly} Предыдущая версия игры сохранена без изменений.`);
-      setRetryAction(() => () => handleModify(modificationPrompt));
+      const classified = classifyApiError(err, { isModification: true });
+      setErrorMessage(classified.message);
+      if (classified.retryable) {
+        setRetryAction(() => () => handleModify(modificationPrompt));
+      } else {
+        setRetryAction(null);
+      }
+    } finally {
+      if (stageTimer) clearTimeout(stageTimer);
+      if (timeoutId) clearTimeout(timeoutId);
+      transitionTimerRef.current = null;
+      if (activeAbortControllerRef.current === abortController) {
+        activeAbortControllerRef.current = null;
+      }
     }
   };
 
@@ -295,7 +468,9 @@ export default function App() {
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
               <div>
-                <h5 className="font-bold text-sm">Не удалось создать игру</h5>
+                <h5 className="font-bold text-sm">
+                  {errorContext === 'modify' ? 'Не удалось изменить игру' : 'Не удалось создать игру'}
+                </h5>
                 <p className="text-xs sm:text-sm text-rose-700 dark:text-rose-300 mt-0.5 leading-relaxed">{errorMessage}</p>
                 {retryAction && (
                   <button

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Тест перехода этапов</title>
+  <!-- AI-Games Runtime Guard & Safety Layer -->
+  <style id="aigames-guard-styles">
+    body { margin: 0; padding: 10px; font-family: sans-serif; background: #111; color: #fff; text-align: center; }
+    #start-btn, #next-btn, #restart-btn {
+      pointer-events: auto !important; cursor: pointer !important; z-index: 99999 !important;
+      padding: 12px 24px; font-size: 16px; font-weight: bold; margin: 10px; border-radius: 8px; border: none; background: #ffbe00; color: #000;
+    }
+    .overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85); display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 1000;
+    }
+    .hidden { display: none !important; }
+    .hud { font-size: 18px; font-weight: bold; padding: 10px; background: #222; border-radius: 8px; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <span>Этап: <span id="current-stage-display">1</span> / 2</span> |
+    <span>Счёт: <span id="score-display">0</span> / <span id="target-display">3</span></span> |
+    <span>Позиция игрока: X=<span id="player-x-display">20</span></span>
+  </div>
+
+  <canvas id="gameCanvas" width="300" height="200" style="background: #000; border: 2px solid #ffbe00;"></canvas>
+
+  <div style="margin-top: 15px;">
+    <button id="sim-win-btn" style="padding: 8px 16px; background: #3b82f6; color: #fff; border: none; border-radius: 6px; cursor: pointer;">
+      Собрать все предметы этапа
+    </button>
+  </div>
+
+  <!-- Start Screen -->
+  <div id="start-screen" class="overlay">
+    <h2>Многоэтапная игра</h2>
+    <button id="start-btn">ИГРАТЬ</button>
+  </div>
+
+  <!-- Next Level Transition Screen -->
+  <div id="next-screen" class="overlay hidden">
+    <h2 id="next-title">Этап 1 успешно завершён!</h2>
+    <p>Все цели собраны. Нажмите кнопку, чтобы перейти на Этап 2.</p>
+    <button id="next-btn">СЛЕДУЮЩИЙ ЭТАП</button>
+  </div>
+
+  <!-- Win Screen -->
+  <div id="win-screen" class="overlay hidden">
+    <h2>ПОБЕДА! Все этапы пройдены!</h2>
+    <button id="restart-btn">ИГРАТЬ СНОВА</button>
+  </div>
+
+  <script>
+    const STAGES = [
+      { id: 1, target: 3, startX: 20, enemyCount: 1 },
+      { id: 2, target: 5, startX: 80, enemyCount: 2 }
+    ];
+
+    window.stages = STAGES;
+    window.currentStageIndex = 0;
+    let isTransitioning = false;
+    let score = 0;
+
+    window.player = { x: 20, y: 100 };
+    window.items = [];
+
+    function updateHud() {
+      document.getElementById('current-stage-display').textContent = (window.currentStageIndex + 1);
+      document.getElementById('score-display').textContent = score;
+      document.getElementById('target-display').textContent = STAGES[window.currentStageIndex].target;
+      document.getElementById('player-x-display').textContent = window.player.x;
+    }
+
+    window.loadStage = function(index) {
+      window.currentStageIndex = index;
+      const stage = STAGES[index];
+
+      // 1. Reset player position
+      window.player.x = stage.startX;
+      window.player.y = 100;
+
+      // 2. Reset score & items
+      score = 0;
+      window.items = Array.from({ length: stage.target }, (_, i) => ({ id: i, collected: false }));
+
+      isTransitioning = false;
+      updateHud();
+    };
+
+    window.triggerStageVictory = function() {
+      if (isTransitioning) return;
+      isTransitioning = true;
+
+      // Check if last stage
+      if (window.currentStageIndex >= STAGES.length - 1) {
+        document.getElementById('win-screen').classList.remove('hidden');
+        return;
+      }
+
+      document.getElementById('next-screen').classList.remove('hidden');
+    };
+
+    // Buttons
+    document.getElementById('start-btn').addEventListener('click', () => {
+      document.getElementById('start-screen').classList.add('hidden');
+      window.loadStage(0);
+    });
+
+    document.getElementById('next-btn').addEventListener('click', () => {
+      document.getElementById('next-screen').classList.add('hidden');
+      window.loadStage(window.currentStageIndex + 1);
+    });
+
+    document.getElementById('restart-btn').addEventListener('click', () => {
+      document.getElementById('win-screen').classList.add('hidden');
+      window.loadStage(0);
+    });
+
+    document.getElementById('sim-win-btn').addEventListener('click', () => {
+      score = STAGES[window.currentStageIndex].target;
+      updateHud();
+      window.triggerStageVictory();
+    });
+
+    // Initial setup
+    updateHud();
+  </script>
+</body>
+</html>

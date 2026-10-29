@@ -2,6 +2,7 @@ import type { SolvabilityReport } from './types.ts';
 import { verifyMazeSolvability, autoFixMaze } from './mazeSolver.ts';
 import { verifyPlatformerSolvability, autoFixPlatformer } from './platformerSolver.ts';
 import { extractLevelDataFromHtml, replaceLevelDataInHtml } from './levelExtractor.ts';
+import { autoFixStageTransitions } from './stageTransitionVerifier.ts';
 
 export interface VerifyAndFixResult {
   html: string;
@@ -14,7 +15,7 @@ export interface VerifyAndFixResult {
  * Master entry point: verifies level solvability and automatically fixes errors
  * before presenting the game to the user.
  */
-export function verifyAndFixGame(html: string): VerifyAndFixResult {
+function verifyAndFixLevelGeometry(html: string): VerifyAndFixResult {
   const extracted = extractLevelDataFromHtml(html);
   const fixSummary: string[] = [];
 
@@ -189,6 +190,61 @@ export function verifyAndFixGame(html: string): VerifyAndFixResult {
     },
     wasFixed: false,
     fixSummary: [],
+  };
+}
+
+/**
+ * Master entry point: verifies level solvability, multi-stage transitions,
+ * and automatically fixes errors before presenting the game to the user.
+ */
+export function verifyAndFixGame(html: string): VerifyAndFixResult {
+  // 1. Stage transitions check & auto-repair
+  const stageFix = autoFixStageTransitions(html);
+
+  // 2. Geometry & solvability check on repaired HTML
+  const geomResult = verifyAndFixLevelGeometry(stageFix.html);
+
+  // 3. Combine results
+  const allFixSummary = [...stageFix.changesMade, ...geomResult.fixSummary];
+  const combinedErrors = [...geomResult.report.errors];
+  const combinedWarnings = [...geomResult.report.warnings];
+
+  if (stageFix.report.isMultiStage) {
+    if (!stageFix.report.passed) {
+      combinedErrors.push(...stageFix.report.errors);
+    }
+    combinedWarnings.push(...stageFix.report.warnings);
+  }
+
+  const passed = geomResult.report.passed && (!stageFix.report.isMultiStage || stageFix.report.passed);
+  const hasFatalErrors = combinedErrors.length > 0;
+  const status = hasFatalErrors
+    ? 'issue_detected'
+    : geomResult.report.status === 'insufficient_data'
+    ? 'insufficient_data'
+    : passed
+    ? 'verified'
+    : 'issue_detected';
+
+  return {
+    html: geomResult.html,
+    report: {
+      ...geomResult.report,
+      passed,
+      status,
+      errors: combinedErrors,
+      warnings: combinedWarnings,
+      details: {
+        ...geomResult.report.details,
+        stageTransitions: {
+          isMultiStage: stageFix.report.isMultiStage,
+          passed: stageFix.report.passed,
+          stagesCount: stageFix.report.details.detectedLevelsCount,
+        },
+      },
+    },
+    wasFixed: stageFix.wasFixed || geomResult.wasFixed,
+    fixSummary: allFixSummary,
   };
 }
 
